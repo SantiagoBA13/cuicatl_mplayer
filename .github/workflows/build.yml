@@ -1,0 +1,37 @@
+name: Compilar Cuicatl
+
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+
+      # EL TRUCO: Generamos la estructura de Android aquí mismo
+      - name: Generar estructura Android
+        run: flutter create . --project-name cuicatl_mplayer --org com.cuicatl
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Construir APK
+        run: flutter build apk --release --no-tree-shake-icons
+
+      - name: Subir APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuicatl-app
+          path: build/app/outputs/flutter-apk/app-release.apk
