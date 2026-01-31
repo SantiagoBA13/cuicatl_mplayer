@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
@@ -11,10 +12,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:android_intent_plus/android_intent.dart';
 
+// --- PUNTO DE ENTRADA ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Inicializar Notificaciones
   try {
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.cuicatl.audio',
@@ -22,7 +23,7 @@ Future<void> main() async {
       androidNotificationOngoing: true,
     );
   } catch (e) {
-    debugPrint("Background init error: $e");
+    debugPrint("Info: Background service check ($e)");
   }
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -59,7 +60,7 @@ class CuicatlApp extends StatelessWidget {
   }
 }
 
-// --- FONDO ANIMADO (LAVA LAMP) ---
+// --- FONDO ANIMADO "LAVA LAMP" ---
 class AnimatedBackground extends StatefulWidget {
   final Widget child;
   const AnimatedBackground({super.key, required this.child});
@@ -73,7 +74,7 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 15))..repeat(reverse: true);
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat(reverse: true);
   }
 
   @override
@@ -88,19 +89,18 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
       backgroundColor: const Color(0xFF020205),
       body: Stack(
         children: [
-          // Burbuja 1 (Azul)
           AnimatedBuilder(
             animation: _controller,
             builder: (context, _) {
               return Positioned(
-                top: -50 + (_controller.value * 60),
-                left: -80 + (_controller.value * 40),
+                top: -100 + (_controller.value * 50),
+                left: -80 + (_controller.value * 30),
                 child: Container(
                   width: 500, height: 500,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
-                      colors: [const Color(0xFF4C1D95).withOpacity(0.5), Colors.transparent], 
+                      colors: [const Color(0xFF4C1D95).withOpacity(0.6), Colors.transparent], 
                       radius: 0.6
                     ),
                   ),
@@ -108,19 +108,18 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
               );
             },
           ),
-          // Burbuja 2 (Rojo)
           AnimatedBuilder(
             animation: _controller,
             builder: (context, _) {
               return Positioned(
-                bottom: -100 + (_controller.value * 60),
-                right: -80 + (_controller.value * 40),
+                bottom: -100 + (_controller.value * 50),
+                right: -80 + (_controller.value * 30),
                 child: Container(
                   width: 500, height: 500,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
-                      colors: [const Color(0xFFBE123C).withOpacity(0.4), Colors.transparent], 
+                      colors: [const Color(0xFFBE123C).withOpacity(0.5), Colors.transparent], 
                       radius: 0.6
                     ),
                   ),
@@ -291,7 +290,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   }
 }
 
-// --- HOME SCREEN ---
+// --- HOME SCREEN (CON TU LÓGICA DE PERMISOS INTEGRADA) ---
 class HomeScreen extends StatefulWidget {
   final AudioPlayer audioPlayer;
   final Function(List<SongModel>, int) onPlayRequest;
@@ -309,6 +308,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadName();
+    // TU CÓDIGO INTEGRADO AQUÍ PARA PERMISOS
     _requestPermissions();
   }
 
@@ -317,9 +317,14 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _userName = prefs.getString('userName') ?? "Usuario");
   }
 
-  void _requestPermissions() async {
-    // Pedir todos los permisos posibles para evitar fallos de lectura
-    await [Permission.storage, Permission.audio, Permission.notification].request();
+  // --- TU SOLUCIÓN DE PERMISOS ---
+  Future<void> _requestPermissions() async {
+    bool granted = await _audioQuery.permissionsStatus();
+    if (!granted) {
+      granted = await _audioQuery.permissionsRequest();
+    }
+    // Añadimos también notificación por si acaso Android 13
+    await Permission.notification.request();
     setState(() {});
   }
 
@@ -380,7 +385,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Especial para ti", style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold))),
         const SizedBox(height: 15),
         
-        // --- TARJETAS PREMIUM RESTAURADAS ---
+        // CARRUSEL
         SizedBox(
           height: 180,
           child: ListView(
@@ -413,8 +418,6 @@ class _HomeScreenState extends State<HomeScreen> {
       future: _audioQuery.querySongs(sortType: SongSortType.DATE_ADDED, orderType: OrderType.DESC_OR_GREATER, uriType: UriType.EXTERNAL, ignoreCase: true),
       builder: (context, item) {
         if (item.data == null) return const Center(child: CircularProgressIndicator());
-        if (item.data!.isEmpty) return const Center(child: Text("No se encontraron canciones.\nPermisos necesarios.", textAlign: TextAlign.center));
-        
         var list = item.data!;
         if (limit != null) list = list.take(limit).toList();
 
@@ -595,7 +598,7 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-// --- REPRODUCTOR (AUDIO FIX) ---
+// --- REPRODUCTOR ---
 class PlayerScreen extends StatefulWidget {
   final List<SongModel> initialQueue;
   final int initialIndex;
@@ -640,21 +643,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // --- SOLUCIÓN CRÍTICA: Construir URI 'content://' ---
   Future<void> _initPlaylist() async {
     try {
       final playlist = ConcatenatingAudioSource(
         children: widget.initialQueue.map((song) {
-          // Android 10+ necesita content:// URIs, no paths de archivo
-          Uri audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
-          
+          // URI BUILDER PARA ANDROID 10+
+          Uri audioUri = Uri.parse(song.uri!);
+          if (song.uri == null || song.uri!.isEmpty) {
+             audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
+          }
           return AudioSource.uri(
             audioUri,
             tag: MediaItem(
               id: song.id.toString(),
               title: song.title,
               artist: song.artist ?? "Desconocido",
-              // Dejar arte null para evitar crash en notificación
               artUri: null, 
             ),
           );
@@ -662,10 +665,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
       await widget.audioPlayer.setAudioSource(playlist, initialIndex: widget.initialIndex);
       widget.audioPlayer.play();
-    } catch (e) { 
-      debugPrint("Playback Error: $e");
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error reproduciendo archivo. Verifica permisos.")));
-    }
+    } catch (e) { debugPrint("Playback Error: $e"); }
   }
 
   Future<void> _updatePalette() async {
@@ -702,7 +702,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       backgroundColor: Colors.transparent, 
       body: Stack(
         children: [
-          // Fondo Adaptativo + Blur
+          // Fondo Adaptativo
           AnimatedContainer(
             duration: const Duration(milliseconds: 800),
             decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_adaptiveBackground.withOpacity(0.8), Colors.black]))
@@ -713,7 +713,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           SafeArea(
             child: Column(
               children: [
-                // Header (Botones Glass)
+                // Header Glass
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   child: Row(
@@ -727,7 +727,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 
                 const Spacer(),
                 
-                // Carrusel Carátula (Diseño Shape of You)
+                // Carrusel
                 SizedBox(
                   height: 340,
                   child: PageView.builder(
@@ -746,7 +746,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const SizedBox(height: 30),
                 
-                // Info + Favorito (ALINEACIÓN "Shape of You")
+                // Info + Favorito
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 30),
                   child: Row(
@@ -756,7 +756,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(currentSong.title, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
                           const SizedBox(height: 4),
-                          Text("Año 202X", style: GoogleFonts.outfit(fontSize: 12, color: Colors.white60)), // Simulado, on_audio_query a veces falla con el año
+                          Text("Año 202X", style: GoogleFonts.outfit(fontSize: 12, color: Colors.white60)),
                         ]),
                       ),
                       IconButton(icon: Icon(_isFav ? Icons.favorite : Icons.favorite_border, color: _isFav ? _adaptiveColor : Colors.white54, size: 28), onPressed: _toggleFav)
@@ -766,7 +766,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 
                 const SizedBox(height: 20),
                 
-                // Visualizador de Onda (Waveform)
+                // Waveform
                 StreamBuilder<Duration>(
                   stream: widget.audioPlayer.positionStream,
                   builder: (context, snapshot) {
@@ -793,8 +793,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
 
                 const SizedBox(height: 10),
-                
-                // Controles
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
@@ -810,8 +808,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 
                 const Spacer(),
-                
-                // Lyrics Handle
                 DraggableScrollableSheet(
                   initialChildSize: 0.08, minChildSize: 0.08, maxChildSize: 0.6,
                   builder: (context, scrollController) {
@@ -863,64 +859,4 @@ class WaveformSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const int barCount = 35; 
-    final double percentage = duration.inMilliseconds == 0 ? 0 : position.inMilliseconds / duration.inMilliseconds;
-    return GestureDetector(
-      onHorizontalDragUpdate: (details) {
-        final box = context.findRenderObject() as RenderBox;
-        final p = (box.globalToLocal(details.globalPosition).dx / box.size.width).clamp(0.0, 1.0);
-        onSeek(Duration(milliseconds: (duration.inMilliseconds * p).round()));
-      },
-      onTapUp: (details) {
-        final box = context.findRenderObject() as RenderBox;
-        final p = (box.globalToLocal(details.globalPosition).dx / box.size.width).clamp(0.0, 1.0);
-        onSeek(Duration(milliseconds: (duration.inMilliseconds * p).round()));
-      },
-      child: Container(
-        height: 50, width: double.infinity, color: Colors.transparent, padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.center,
-          children: List.generate(barCount, (index) {
-            final double waveHeight = 10 + (15 * sin(index * 0.5).abs()) + (Random(index).nextInt(10).toDouble());
-            final bool isActive = index / barCount <= percentage;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 4, height: isActive ? waveHeight + 5 : waveHeight,
-              decoration: BoxDecoration(color: isActive ? Colors.white : Colors.white24, borderRadius: BorderRadius.circular(5), boxShadow: isActive ? [BoxShadow(color: color.withOpacity(0.5), blurRadius: 5)] : null),
-            );
-          }),
-        ),
-      ),
-    );
-  }
-}
-
-// --- BUSCADOR ---
-class SongSearchDelegate extends SearchDelegate {
-  final OnAudioQuery audioQuery;
-  final Function(List<SongModel>, int) onPlay;
-  SongSearchDelegate(this.audioQuery, this.onPlay);
-
-  @override
-  ThemeData appBarTheme(BuildContext context) => ThemeData.dark().copyWith(scaffoldBackgroundColor: const Color(0xFF0F0F1E), appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF1E1E2C)));
-  @override
-  List<Widget>? buildActions(BuildContext context) => [IconButton(icon: const Icon(Icons.clear), onPressed: () => query = '')];
-  @override
-  Widget? buildLeading(BuildContext context) => IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => close(context, null));
-  @override
-  Widget buildResults(BuildContext context) => buildSuggestions(context);
-  @override
-  Widget buildSuggestions(BuildContext context) {
-    return FutureBuilder<List<SongModel>>(
-      future: audioQuery.querySongs(),
-      builder: (context, item) {
-        if (!item.hasData) return const Center(child: CircularProgressIndicator());
-        final results = item.data!.where((s) => s.title.toLowerCase().contains(query.toLowerCase())).toList();
-        return ListView.builder(
-          itemCount: results.length, itemBuilder: (context, index) {
-            return ListTile(title: Text(results[index].title), subtitle: Text(results[index].artist ?? ""), onTap: () { close(context, null); onPlay(results, index); });
-          },
-        );
-      },
-    );
-  }
-}
+    final double percentage = duration
