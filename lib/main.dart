@@ -10,13 +10,13 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
-import 'package:android_intent_plus/android_intent.dart'; // Import corregido
+import 'package:equalizer_flutter/equalizer_flutter.dart';
 
-// --- PUNTO DE ENTRADA SEGURO ---
+// --- 1. PUNTO DE ENTRADA SEGURO ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Intento de iniciar notificaciones (Modo Seguro)
+  // Intentamos iniciar el servicio de notificaciones
   try {
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.cuicatl.audio',
@@ -24,11 +24,9 @@ Future<void> main() async {
       androidNotificationOngoing: true,
     );
   } catch (e) {
-    debugPrint("Error iniciando notificaciones: $e");
-    // La app continuará aunque esto falle
+    debugPrint("Advertencia: No se pudo iniciar el servicio de fondo (Probablemente falta configuración en AndroidManifest)");
   }
 
-  // Configuración visual inmersiva
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -50,11 +48,11 @@ class CuicatlApp extends StatelessWidget {
       theme: ThemeData(
         brightness: Brightness.dark,
         useMaterial3: true,
-        scaffoldBackgroundColor: Colors.black, // Fondo base negro para evitar parpadeos
+        scaffoldBackgroundColor: Colors.transparent, // Transparente para ver las burbujas
         textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF8B5CF6),
-          secondary: Color(0xFF34D399),
+          secondary: Color(0xFFEC4899),
           surface: Color(0xFF1E1E2C),
         ),
       ),
@@ -63,7 +61,83 @@ class CuicatlApp extends StatelessWidget {
   }
 }
 
-// --- GESTOR DE ESTADO ---
+// --- 2. FONDO ANIMADO "LAVA LAMP" (BURBUJAS) ---
+class AnimatedBackground extends StatefulWidget {
+  final Widget child;
+  const AnimatedBackground({super.key, required this.child});
+  @override
+  State<AnimatedBackground> createState() => _AnimatedBackgroundState();
+}
+
+class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 15))..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF050505), // Negro profundo base
+      body: Stack(
+        children: [
+          // Burbuja Azul/Morada
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              return Positioned(
+                top: -50 + (_controller.value * 100),
+                left: -100 + (_controller.value * 50),
+                child: Container(
+                  width: 500, height: 500,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(colors: [const Color(0xFF5B21B6).withOpacity(0.5), Colors.transparent], radius: 0.7),
+                  ),
+                ),
+              );
+            },
+          ),
+          // Burbuja Roja/Rosa
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              return Positioned(
+                bottom: -100 + (_controller.value * 80),
+                right: -100 + (_controller.value * 40),
+                child: Container(
+                  width: 450, height: 450,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(colors: [const Color(0xFFBE123C).withOpacity(0.4), Colors.transparent], radius: 0.7),
+                  ),
+                ),
+              );
+            },
+          ),
+          // Difuminado Global (Glass Effect)
+          BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+            child: Container(color: Colors.transparent),
+          ),
+          // El contenido de la app va encima
+          widget.child,
+        ],
+      ),
+    );
+  }
+}
+
+// --- 3. GESTIÓN DE INICIO ---
 class RootHandler extends StatefulWidget {
   const RootHandler({super.key});
   @override
@@ -83,13 +157,13 @@ class _RootHandlerState extends State<RootHandler> {
   }
   @override
   Widget build(BuildContext context) {
-    if (_hasName == null) return const Scaffold(backgroundColor: Color(0xFF0F0F1E), body: Center(child: CircularProgressIndicator()));
+    // Envolvemos todo en el fondo animado
+    if (_hasName == null) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator()));
     if (_hasName == false) return const OnboardingScreen();
-    return const MainNavigationController();
+    return const AnimatedBackground(child: MainNavigationController());
   }
 }
 
-// --- ONBOARDING ---
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
   @override
@@ -102,13 +176,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (_nameController.text.isNotEmpty) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('userName', _nameController.text);
-      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainNavigationController()));
+      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AnimatedBackground(child: MainNavigationController())));
     }
   }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1E),
+      backgroundColor: Colors.black,
       body: Container(
         decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF4C1D95), Color(0xFF0F0F1E)])),
         child: Padding(
@@ -120,20 +194,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               const SizedBox(height: 20),
               Text("Bienvenido a CUICATL", style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.bold)),
               const SizedBox(height: 40),
-              TextField(
-                controller: _nameController,
-                textAlign: TextAlign.center,
-                decoration: InputDecoration(
-                  hintText: "¿Cómo te llamas?", filled: true, fillColor: Colors.white10,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-                ),
-              ),
+              TextField(controller: _nameController, textAlign: TextAlign.center, decoration: InputDecoration(hintText: "¿Cómo te llamas?", filled: true, fillColor: Colors.white10, border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none))),
               const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _saveName,
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6), padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15)),
-                child: const Text("Comenzar", style: TextStyle(color: Colors.white, fontSize: 18)),
-              )
+              ElevatedButton(onPressed: _saveName, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF8B5CF6), padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15)), child: const Text("Comenzar", style: TextStyle(color: Colors.white, fontSize: 18)))
             ],
           ),
         ),
@@ -142,7 +205,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-// --- NAVEGACIÓN PRINCIPAL (FIXED: Sin espacios negros) ---
+// --- 4. NAVEGACIÓN PRINCIPAL ---
 class MainNavigationController extends StatefulWidget {
   const MainNavigationController({super.key});
   @override
@@ -153,32 +216,17 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   int _currentIndex = 0;
   final AudioPlayer _audioPlayer = AudioPlayer();
   List<SongModel> _currentQueue = [];
-  
-  // Fondo Global Dinámico
-  Color _bg1 = const Color(0xFF0F0F1E);
-  Color _bg2 = Colors.black;
-
   late List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
     _pages = [
-      HomeScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist),
-      Container(), // Placeholder
-      FavoritesScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist),
-      const SettingsScreen(),
+      HomeScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist), // Home
+      Container(), // Placeholder Player
+      FavoritesScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist), // Favoritos (Restaurado)
+      const SettingsScreen(), // Settings (Restaurado)
     ];
-    
-    // Escuchar cambios para actualizar el fondo global
-    _audioPlayer.currentIndexStream.listen((index) {
-       if (index != null && _audioPlayer.playing) {
-          setState(() {
-             // Cambio sutil de color de fondo al cambiar canción
-             _bg1 = Colors.primaries[Random().nextInt(Colors.primaries.length)].withOpacity(0.3);
-          });
-       }
-    });
   }
 
   void _playPlaylist(List<SongModel> queue, int index) {
@@ -192,45 +240,30 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBody: true, // CLAVE: Esto permite que el contenido baje hasta el borde inferior
-      backgroundColor: Colors.transparent, // Transparente para ver el fondo del stack
-      body: Stack(
-        children: [
-          // 1. Fondo Global
-          AnimatedContainer(
-            duration: const Duration(seconds: 2),
-            decoration: BoxDecoration(gradient: RadialGradient(center: Alignment.topLeft, radius: 1.3, colors: [_bg1, _bg2])),
-          ),
-          // 2. Contenido de la página
-          _currentIndex == 1 ? HomeScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist) : _pages[_currentIndex],
-        ],
+      backgroundColor: Colors.transparent,
+      extendBody: true,
+      body: SafeArea(
+        bottom: false,
+        child: _currentIndex == 1 ? HomeScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist) : _pages[_currentIndex],
       ),
-      bottomNavigationBar: _buildGlassNavBar(),
-    );
-  }
-
-  Widget _buildGlassNavBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(40),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-          child: Container(
-            height: 75,
-            decoration: BoxDecoration(
-              color: const Color(0xFF161622).withOpacity(0.65), // Fondo semitransparente
-              borderRadius: BorderRadius.circular(40),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _navBtn(Icons.home_filled, 0),
-                _navBtn(Icons.play_circle_fill, 1),
-                _navBtn(Icons.favorite, 2),
-                _navBtn(Icons.settings, 3),
-              ],
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(40),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            child: Container(
+              height: 75,
+              decoration: BoxDecoration(color: const Color(0xFF161622).withOpacity(0.6), borderRadius: BorderRadius.circular(40), border: Border.all(color: Colors.white.withOpacity(0.1))),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _navBtn(Icons.home_filled, 0),
+                  _navBtn(Icons.play_circle_fill, 1),
+                  _navBtn(Icons.favorite, 2),
+                  _navBtn(Icons.settings, 3),
+                ],
+              ),
             ),
           ),
         ),
@@ -244,9 +277,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       onTap: () {
         if (index == 1) {
           if (_audioPlayer.audioSource != null) {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(
-              initialQueue: _currentQueue, initialIndex: _audioPlayer.currentIndex ?? 0, 
-              audioPlayer: _audioPlayer, isContinuing: true)));
+            Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(initialQueue: _currentQueue, initialIndex: _audioPlayer.currentIndex ?? 0, audioPlayer: _audioPlayer, isContinuing: true)));
           } else {
              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Selecciona una canción primero")));
           }
@@ -254,16 +285,12 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           setState(() => _currentIndex = index);
         }
       },
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: isActive ? const BoxDecoration(color: Color(0xFF8B5CF6), shape: BoxShape.circle) : null,
-        child: Icon(icon, color: isActive ? Colors.white : Colors.white54, size: 28),
-      ),
+      child: Container(padding: const EdgeInsets.all(12), decoration: isActive ? const BoxDecoration(color: Color(0xFF8B5CF6), shape: BoxShape.circle) : null, child: Icon(icon, color: isActive ? Colors.white : Colors.white54, size: 28)),
     );
   }
 }
 
-// --- HOME SCREEN ---
+// --- 5. PANTALLA PRINCIPAL (HOME) ---
 class HomeScreen extends StatefulWidget {
   final AudioPlayer audioPlayer;
   final Function(List<SongModel>, int) onPlayRequest;
@@ -281,12 +308,19 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadName();
-    Permission.storage.request();
+    _requestPermissions(); // Permisos al iniciar
   }
 
   Future<void> _loadName() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _userName = prefs.getString('userName') ?? "Usuario");
+  }
+
+  void _requestPermissions() async {
+    await Permission.storage.request();
+    await Permission.audio.request();
+    await Permission.notification.request();
+    setState(() {});
   }
 
   Future<void> _playRandomMix() async {
@@ -299,35 +333,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: false, // Permitir que baje hasta el fondo
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("CUICATL", style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 2)),
-                IconButton(icon: const Icon(Icons.search, size: 28), onPressed: () => showSearch(context: context, delegate: SongSearchDelegate(_audioQuery, widget.onPlayRequest))),
-              ],
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text("CUICATL", style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 2)),
+              // BUSCADOR ACTIVO
+              IconButton(icon: const Icon(Icons.search, size: 28), onPressed: () => showSearch(context: context, delegate: SongSearchDelegate(_audioQuery, widget.onPlayRequest))),
+            ],
           ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(children: [
-              _buildPill(_userName, 0),
-              _buildPill("Música", 1),
-              _buildPill("Artistas", 2),
-              _buildPill("Playlists", 3),
-            ]),
-          ),
-          const SizedBox(height: 20),
-          Expanded(child: _buildBodyContent()),
-        ],
-      ),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(children: [_buildPill(_userName, 0), _buildPill("Música", 1), _buildPill("Artistas", 2)]),
+        ),
+        const SizedBox(height: 20),
+        Expanded(child: _buildBodyContent()),
+      ],
     );
   }
 
@@ -335,12 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
     bool isSelected = _selectedTab == index;
     return GestureDetector(
       onTap: () => setState(() => _selectedTab = index),
-      child: Container(
-        margin: const EdgeInsets.only(right: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-        decoration: BoxDecoration(color: isSelected ? const Color(0xFF8B5CF6) : Colors.white10, borderRadius: BorderRadius.circular(30)),
-        child: Text(text, style: GoogleFonts.outfit(color: isSelected ? Colors.white : Colors.white60, fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal)),
-      ),
+      child: Container(margin: const EdgeInsets.only(right: 12), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10), decoration: BoxDecoration(color: isSelected ? const Color(0xFF8B5CF6) : Colors.white10, borderRadius: BorderRadius.circular(30)), child: Text(text, style: GoogleFonts.outfit(color: isSelected ? Colors.white : Colors.white60, fontWeight: FontWeight.bold))),
     );
   }
 
@@ -348,13 +370,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_selectedTab == 0) return _buildHomeTab();
     if (_selectedTab == 1) return _buildMusicTab();
     if (_selectedTab == 2) return _buildArtistsTab();
-    if (_selectedTab == 3) return _buildPlaylistsTab();
-    return Container();
+    return Center(child: Text("Próximamente", style: GoogleFonts.outfit(color: Colors.white54)));
   }
 
   Widget _buildHomeTab() {
     return ListView(
-      padding: const EdgeInsets.only(bottom: 120), // Padding inferior para evitar el navBar
+      padding: const EdgeInsets.only(bottom: 120),
       children: [
         Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Especial para ti", style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold))),
         const SizedBox(height: 15),
@@ -367,36 +388,45 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildCard("Mix Aleatorio", const Color(0xFF34D399), const Color(0xFF059669), Icons.shuffle, _playRandomMix),
               const SizedBox(width: 15),
               _buildCard("Novedades", const Color(0xFFF97316), const Color(0xFFC2410C), Icons.new_releases, _playRandomMix),
-              const SizedBox(width: 15),
-              _buildCard("Chill Mode", const Color(0xFFA855F7), const Color(0xFF7E22CE), Icons.nights_stay, _playRandomMix),
             ],
           ),
         ),
         const SizedBox(height: 25),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Escuchado recientemente", style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold))),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Todas las canciones", style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold))),
         const SizedBox(height: 10),
-        FutureBuilder<List<SongModel>>(
-          future: _audioQuery.querySongs(sortType: SongSortType.DATE_ADDED, orderType: OrderType.DESC_OR_GREATER),
-          builder: (context, item) {
-            if (item.data == null) return const SizedBox();
-            // Tomamos 5 manualmente para evitar errores de versión
-            final recent = item.data!.take(5).toList();
-            return Column(children: recent.map((e) => _songTile(e, item.data!, item.data!.indexOf(e))).toList());
-          },
-        )
+        _buildMusicList(limit: 5),
       ],
     );
   }
 
   Widget _buildMusicTab() {
+    return _buildMusicList();
+  }
+
+  Widget _buildMusicList({int? limit}) {
     return FutureBuilder<List<SongModel>>(
-      future: _audioQuery.querySongs(sortType: SongSortType.TITLE, orderType: OrderType.ASC_OR_SMALLER, uriType: UriType.EXTERNAL, ignoreCase: true),
+      future: _audioQuery.querySongs(sortType: SongSortType.DATE_ADDED, orderType: OrderType.DESC_OR_GREATER, uriType: UriType.EXTERNAL, ignoreCase: true),
       builder: (context, item) {
         if (item.data == null) return const Center(child: CircularProgressIndicator());
+        if (item.data!.isEmpty) return const Center(child: Text("No se encontraron canciones.", textAlign: TextAlign.center));
+        
+        var list = item.data!;
+        if (limit != null) list = list.take(limit).toList();
+
         return ListView.builder(
+          shrinkWrap: limit != null,
+          physics: limit != null ? const NeverScrollableScrollPhysics() : null,
           padding: const EdgeInsets.only(bottom: 120),
-          itemCount: item.data!.length,
-          itemBuilder: (context, index) => _songTile(item.data![index], item.data!, index),
+          itemCount: list.length,
+          itemBuilder: (context, index) {
+            return ListTile(
+              leading: ClipRRect(borderRadius: BorderRadius.circular(10), child: QueryArtworkWidget(id: list[index].id, type: ArtworkType.AUDIO, nullArtworkWidget: Container(width: 50, height: 50, color: Colors.white10, child: const Icon(Icons.music_note)))),
+              title: Text(list[index].title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text(list[index].artist ?? "Desconocido", style: const TextStyle(fontSize: 12, color: Colors.white54)),
+              trailing: const Icon(Icons.play_circle_outline, color: Color(0xFF8B5CF6)),
+              onTap: () => widget.onPlayRequest(item.data!, item.data!.indexOf(list[index])),
+            );
+          },
         );
       },
     );
@@ -423,10 +453,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildPlaylistsTab() {
-    return Center(child: Text("Crea tus playlists aquí", style: GoogleFonts.outfit(color: Colors.white54)));
-  }
-
   Widget _buildCard(String title, Color c1, Color c2, IconData icon, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -451,50 +477,9 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  Widget _songTile(SongModel song, List<SongModel> fullList, int index) {
-    return ListTile(
-      leading: ClipRRect(borderRadius: BorderRadius.circular(10), child: QueryArtworkWidget(id: song.id, type: ArtworkType.AUDIO, nullArtworkWidget: Container(width: 50, height: 50, color: Colors.white10, child: const Icon(Icons.music_note)))),
-      title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: Text(song.artist ?? "Desconocido", style: const TextStyle(fontSize: 12, color: Colors.white54)),
-      trailing: const Icon(Icons.play_circle_outline, color: Color(0xFF8B5CF6)),
-      onTap: () => widget.onPlayRequest(fullList, index),
-    );
-  }
 }
 
-// --- BUSCADOR ---
-class SongSearchDelegate extends SearchDelegate {
-  final OnAudioQuery audioQuery;
-  final Function(List<SongModel>, int) onPlay;
-  SongSearchDelegate(this.audioQuery, this.onPlay);
-
-  @override
-  ThemeData appBarTheme(BuildContext context) => ThemeData.dark().copyWith(scaffoldBackgroundColor: const Color(0xFF0F0F1E), appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF1E1E2C)));
-  @override
-  List<Widget>? buildActions(BuildContext context) => [IconButton(icon: const Icon(Icons.clear), onPressed: () => query = '')];
-  @override
-  Widget? buildLeading(BuildContext context) => IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => close(context, null));
-  @override
-  Widget buildResults(BuildContext context) => buildSuggestions(context);
-  @override
-  Widget buildSuggestions(BuildContext context) {
-    return FutureBuilder<List<SongModel>>(
-      future: audioQuery.querySongs(),
-      builder: (context, item) {
-        if (!item.hasData) return const Center(child: CircularProgressIndicator());
-        final results = item.data!.where((s) => s.title.toLowerCase().contains(query.toLowerCase())).toList();
-        return ListView.builder(
-          itemCount: results.length, itemBuilder: (context, index) {
-            return ListTile(title: Text(results[index].title), subtitle: Text(results[index].artist ?? ""), onTap: () { close(context, null); onPlay(results, index); });
-          },
-        );
-      },
-    );
-  }
-}
-
-// --- FAVORITOS ---
+// --- 6. PANTALLA FAVORITOS (RESTAURADA) ---
 class FavoritesScreen extends StatefulWidget {
   final AudioPlayer audioPlayer;
   final Function(List<SongModel>, int) onPlayRequest;
@@ -506,86 +491,59 @@ class FavoritesScreen extends StatefulWidget {
 class _FavoritesScreenState extends State<FavoritesScreen> {
   List<String> _favIds = [];
   final OnAudioQuery _audioQuery = OnAudioQuery();
+  
   @override
   void initState() { super.initState(); _loadFavs(); }
+  
   Future<void> _loadFavs() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _favIds = prefs.getStringList('favorites') ?? []);
   }
+  
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        children: [
-          Padding(padding: const EdgeInsets.all(20), child: Text("Mis Favoritos ❤️", style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold))),
-          Expanded(
-            child: FutureBuilder<List<SongModel>>(
-              future: _audioQuery.querySongs(),
-              builder: (context, item) {
-                if (item.data == null) return const Center(child: CircularProgressIndicator());
-                List<SongModel> favSongs = item.data!.where((element) => _favIds.contains(element.id.toString())).toList();
-                if (favSongs.isEmpty) return const Center(child: Text("Dale ❤️ a una canción para verla aquí."));
-                return ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 120),
-                  itemCount: favSongs.length,
-                  itemBuilder: (context, index) {
-                    return ListTile(
-                      leading: QueryArtworkWidget(id: favSongs[index].id, type: ArtworkType.AUDIO, nullArtworkWidget: const Icon(Icons.music_note)),
-                      title: Text(favSongs[index].title),
-                      subtitle: Text(favSongs[index].artist ?? ""),
-                      trailing: IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.white24), onPressed: () async {
-                         final prefs = await SharedPreferences.getInstance();
-                         _favIds.remove(favSongs[index].id.toString());
-                         await prefs.setStringList('favorites', _favIds);
-                         setState(() {});
-                      }),
-                      onTap: () => widget.onPlayRequest(favSongs, index),
-                    );
-                  },
-                );
-              },
-            ),
+    return Column(
+      children: [
+        Padding(padding: const EdgeInsets.all(20), child: Text("Mis Favoritos ❤️", style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold))),
+        Expanded(
+          child: FutureBuilder<List<SongModel>>(
+            future: _audioQuery.querySongs(),
+            builder: (context, item) {
+              if (item.data == null) return const Center(child: CircularProgressIndicator());
+              // Filtramos las canciones que coinciden con los IDs guardados
+              List<SongModel> favSongs = item.data!.where((element) => _favIds.contains(element.id.toString())).toList();
+              
+              if (favSongs.isEmpty) return const Center(child: Text("Dale ❤️ a una canción para verla aquí."));
+              
+              return ListView.builder(
+                padding: const EdgeInsets.only(bottom: 120),
+                itemCount: favSongs.length,
+                itemBuilder: (context, index) {
+                  return ListTile(
+                    leading: QueryArtworkWidget(id: favSongs[index].id, type: ArtworkType.AUDIO, nullArtworkWidget: const Icon(Icons.music_note)),
+                    title: Text(favSongs[index].title),
+                    subtitle: Text(favSongs[index].artist ?? ""),
+                    trailing: IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.white24), onPressed: () async {
+                       final prefs = await SharedPreferences.getInstance();
+                       _favIds.remove(favSongs[index].id.toString());
+                       await prefs.setStringList('favorites', _favIds);
+                       setState(() {});
+                    }),
+                    onTap: () => widget.onPlayRequest(favSongs, index),
+                  );
+                },
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-// --- CONFIGURACIÓN ---
-class SettingsScreen extends StatefulWidget {
+// --- 7. CONFIGURACIÓN & ECUALIZADOR ---
+class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
-  @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  bool _hqAudio = false;
-  bool _crossfade = false;
-  bool _amoled = false;
-
-  @override
-  void initState() { super.initState(); _loadSettings(); }
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() { _hqAudio = prefs.getBool('hqAudio') ?? false; _crossfade = prefs.getBool('crossfade') ?? false; _amoled = prefs.getBool('amoled') ?? false; });
-  }
-  Future<void> _saveSetting(String key, bool value) async {
-    final prefs = await SharedPreferences.getInstance(); await prefs.setBool(key, value);
-    setState(() { if(key == 'hqAudio') _hqAudio = value; if(key == 'crossfade') _crossfade = value; if(key == 'amoled') _amoled = value; });
-  }
-  
-  // ABRIR ECUALIZADOR (Corregido)
-  void _openSystemEQ() {
-    try {
-      // Usamos el constructor sin const y con action correcta
-      const intent = AndroidIntent(action: 'android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL');
-      intent.launch();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No se encontró Ecualizador en tu sistema")));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -594,18 +552,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const Text("CONFIGURACIÓN", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 20),
         const Text("AUDIO PRO", style: TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold)),
-        SwitchListTile(value: _hqAudio, onChanged: (v) => _saveSetting('hqAudio', v), title: const Text("Forzar Alta Calidad"), subtitle: const Text("Intenta usar drivers Hi-Res"), activeColor: const Color(0xFF8B5CF6)),
-        SwitchListTile(value: _crossfade, onChanged: (v) => _saveSetting('crossfade', v), title: const Text("Crossfade"), subtitle: const Text("Mezcla suave entre canciones"), activeColor: const Color(0xFF8B5CF6)),
+        SwitchListTile(value: true, onChanged: (v){}, title: const Text("Forzar Alta Calidad"), subtitle: const Text("Intenta usar drivers Hi-Res"), activeColor: const Color(0xFF8B5CF6)),
         ListTile(
           leading: const Icon(Icons.graphic_eq, color: Color(0xFF34D399), size: 30),
-          title: const Text("Ecualizador Profesional"),
-          subtitle: const Text("Abrir DSP del Sistema"),
-          onTap: _openSystemEQ,
+          title: const Text("Ecualizador Interno"),
+          subtitle: const Text("Ajustar bandas de frecuencia"),
           trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EqualizerScreen())),
         ),
-        const Divider(color: Colors.white12),
-        const Text("APARIENCIA", style: TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold)),
-        SwitchListTile(value: _amoled, onChanged: (v) => _saveSetting('amoled', v), title: const Text("Tema AMOLED Puro"), activeColor: const Color(0xFF8B5CF6)),
         const Divider(color: Colors.white12),
         ListTile(leading: const Icon(Icons.logout, color: Colors.redAccent), title: const Text("Restablecer Usuario"), onTap: () async {
           final prefs = await SharedPreferences.getInstance(); prefs.remove('userName');
@@ -616,7 +570,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-// --- REPRODUCTOR PREMIUM (Fixed) ---
+class EqualizerScreen extends StatefulWidget {
+  const EqualizerScreen({super.key});
+  @override
+  State<EqualizerScreen> createState() => _EqualizerScreenState();
+}
+
+class _EqualizerScreenState extends State<EqualizerScreen> {
+  bool _enabled = false;
+  List<int> _bandLevels = [];
+
+  @override
+  void initState() { super.initState(); _initEQ(); }
+
+  Future<void> _initEQ() async {
+    try {
+      await EqualizerFlutter.init(0); 
+      await EqualizerFlutter.setEnabled(true);
+      var bands = await EqualizerFlutter.getBandLevelRange();
+      setState(() { _enabled = true; _bandLevels = List.filled(5, 0); });
+    } catch (e) {
+      debugPrint("EQ Error: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F0F1E),
+      appBar: AppBar(title: const Text("Ecualizador"), backgroundColor: Colors.transparent),
+      body: Center(
+        child: _enabled 
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: List.generate(5, (index) => Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  RotatedBox(quarterTurns: 3, child: Slider(value: _bandLevels[index].toDouble(), min: -10, max: 10, activeColor: const Color(0xFF8B5CF6), onChanged: (v) { setState(() => _bandLevels[index] = v.toInt()); EqualizerFlutter.setBandLevel(index, v.toInt()); })),
+                  Text("${(index + 1) * 60}Hz"),
+                ],
+              )),
+            )
+          : const Text("Ecualizador no disponible"),
+      ),
+    );
+  }
+}
+
+// --- 8. REPRODUCTOR PREMIUM ---
 class PlayerScreen extends StatefulWidget {
   final List<SongModel> initialQueue;
   final int initialIndex;
@@ -635,10 +636,6 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
   bool _isFav = false;
   
   Color _adaptiveColor = const Color(0xFF8B5CF6);
-  Color _adaptiveBackground = const Color(0xFF2E1065);
-  
-  Stream<Duration>? _positionStream;
-  Stream<Duration?>? _durationStream;
   late AnimationController _waveController;
 
   @override
@@ -648,14 +645,8 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
     _pageController = PageController(initialPage: widget.initialIndex);
     _waveController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000))..repeat();
 
-    _positionStream = widget.audioPlayer.positionStream;
-    _durationStream = widget.audioPlayer.durationStream;
-
     if (!widget.isContinuing) _initPlaylist();
-    else {
-      _isPlaying = widget.audioPlayer.playing;
-      _updatePalette(); 
-    }
+    else { _isPlaying = widget.audioPlayer.playing; _updatePalette(); }
 
     widget.audioPlayer.currentIndexStream.listen((index) {
       if (index != null && mounted) {
@@ -683,15 +674,16 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
               id: song.id.toString(),
               title: song.title,
               artist: song.artist ?? "Desconocido",
+              // La carátula en notificaciones requiere URI web o local file path complejo,
+              // para evitar errores de compilación sin PC, usamos null por ahora.
               artUri: null, 
             ),
           );
         }).toList(),
       );
-      
       await widget.audioPlayer.setAudioSource(playlist, initialIndex: widget.initialIndex);
       widget.audioPlayer.play();
-    } catch (e) { debugPrint("Error: $e"); }
+    } catch (e) { debugPrint("Playback Error: $e"); }
   }
 
   Future<void> _updatePalette() async {
@@ -700,12 +692,7 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
       Uint8List? artworkBytes = await OnAudioQuery().queryArtwork(song.id, ArtworkType.AUDIO, size: 500);
       if (artworkBytes != null) {
         final PaletteGenerator palette = await PaletteGenerator.fromImageProvider(MemoryImage(artworkBytes));
-        if (mounted) {
-          setState(() {
-            _adaptiveColor = palette.dominantColor?.color ?? const Color(0xFF8B5CF6);
-            _adaptiveBackground = palette.darkMutedColor?.color ?? const Color(0xFF0F0F1E);
-          });
-        }
+        if (mounted) setState(() => _adaptiveColor = palette.dominantColor?.color ?? const Color(0xFF8B5CF6));
       }
     } catch (e) { debugPrint("Error palette: $e"); }
   }
@@ -719,17 +706,6 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
     else { favs.add(id); setState(() => _isFav = true); }
     await prefs.setStringList('favorites', favs);
   }
-  
-  void _showTimerDialog() {
-    showDialog(context: context, builder: (_) => AlertDialog(
-      backgroundColor: const Color(0xFF1E1E2C),
-      title: const Text("Temporizador"),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-         ListTile(title: const Text("15 Minutos"), onTap: (){ Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Se detendrá en 15 min"))); }),
-         ListTile(title: const Text("30 Minutos"), onTap: (){ Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Se detendrá en 30 min"))); }),
-      ]),
-    ));
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -737,156 +713,88 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
     final currentSong = widget.initialQueue[_currentIndex];
 
     return Scaffold(
-      body: Stack(
+      backgroundColor: Colors.transparent, // Transparente para ver las burbujas de fondo
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: () => Navigator.pop(context))),
+      body: Column(
         children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 800),
-            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_adaptiveBackground.withOpacity(0.8), const Color(0xFF050505)]))
+          const Spacer(),
+          // Carrusel de Carátulas
+          SizedBox(
+            height: 320,
+            child: PageView.builder(
+              controller: _pageController, itemCount: widget.initialQueue.length,
+              onPageChanged: (i) => widget.audioPlayer.seek(Duration.zero, index: i),
+              itemBuilder: (context, index) {
+                return Center(
+                  child: Container(
+                    height: 300, width: 300,
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 30)]),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(30), child: QueryArtworkWidget(id: widget.initialQueue[index].id, type: ArtworkType.AUDIO, size: 1000, nullArtworkWidget: Container(color: Colors.white10, child: const Icon(Icons.music_note, size: 100)))),
+                  ),
+                );
+              },
+            ),
           ),
-           Positioned.fill(child: RepaintBoundary(child: Opacity(opacity: 0.4, child: QueryArtworkWidget(id: currentSong.id, type: ArtworkType.AUDIO, artworkHeight: MediaQuery.of(context).size.height, artworkWidth: MediaQuery.of(context).size.height, size: 1000, artworkFit: BoxFit.cover, nullArtworkWidget: const SizedBox())))),
-           BackdropFilter(filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40), child: Container(color: Colors.transparent)),
-
-          SafeArea(
-            child: Column(
+          const SizedBox(height: 40),
+          // Títulos y Favoritos
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 30),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _glassBtn(Icons.keyboard_arrow_down, () => Navigator.pop(context)),
-                      Text("REPRODUCIENDO", style: GoogleFonts.outfit(fontSize: 12, color: Colors.white70, letterSpacing: 2)),
-                      PopupMenuButton<String>(
-                        icon: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.more_vert, size: 20)),
-                        color: const Color(0xFF1E1E2C),
-                        onSelected: (v) {
-                          if (v == 'timer') _showTimerDialog();
-                          if (v == 'eq') { 
-                            try { 
-                              const AndroidIntent(action: 'android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL').launch(); 
-                            } catch(e){
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sin EQ en el sistema")));
-                            } 
-                          }
-                        },
-                        itemBuilder: (c) => [
-                          const PopupMenuItem(value: 'timer', child: Text("Temporizador 🌙")),
-                          const PopupMenuItem(value: 'eq', child: Text("Ecualizador 🎚️")),
-                        ],
-                      ),
-                    ],
-                  ),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(currentSong.title, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(currentSong.artist ?? "Artista", style: GoogleFonts.outfit(fontSize: 16, color: Colors.white60)),
+                  ]),
                 ),
-                const Spacer(flex: 1), 
-                SizedBox(
-                  height: 340,
-                  child: PageView.builder(
-                    controller: _pageController, itemCount: widget.initialQueue.length,
-                    onPageChanged: (index) { widget.audioPlayer.seek(Duration.zero, index: index); },
-                    itemBuilder: (context, index) {
-                      return Center(
-                        child: Container(
-                          height: 320, width: 320,
-                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 30, offset: const Offset(0, 15))]),
-                          child: ClipRRect(borderRadius: BorderRadius.circular(30), child: QueryArtworkWidget(id: widget.initialQueue[index].id, type: ArtworkType.AUDIO, artworkHeight: 320, artworkWidth: 320, size: 1000, quality: 100, nullArtworkWidget: Container(color: Colors.white10, child: const Icon(Icons.music_note, size: 100, color: Colors.white24)))),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 30),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 30),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(currentSong.artist ?? "Desconocido", style: GoogleFonts.outfit(fontSize: 16, color: Colors.white70)),
-                          const SizedBox(height: 5),
-                          Text(currentSong.title, style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ]),
-                      ),
-                      IconButton(icon: Icon(_isFav ? Icons.favorite : Icons.favorite_border, color: _isFav ? _adaptiveColor : Colors.white54, size: 30), onPressed: _toggleFav)
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                StreamBuilder<Duration>(
-                  stream: _positionStream,
-                  builder: (context, snapshot) {
-                    final position = snapshot.data ?? Duration.zero;
-                    return StreamBuilder<Duration?>(
-                      stream: _durationStream,
-                      builder: (context, snapshotDur) {
-                        final duration = snapshotDur.data ?? Duration.zero;
-                        return Column(children: [
-                            WaveformSlider(position: position, duration: duration, color: _adaptiveColor, onSeek: (p) => widget.audioPlayer.seek(p)),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-                              child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                                  Text(_formatDuration(position), style: const TextStyle(fontSize: 12, color: Colors.white60)),
-                                  Text(_formatDuration(duration), style: const TextStyle(fontSize: 12, color: Colors.white60)),
-                              ]),
-                            )
-                        ]);
-                      }
-                    );
-                  }
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    IconButton(icon: const Icon(Icons.shuffle, color: Colors.white54), onPressed: () {}),
-                    IconButton(icon: const Icon(Icons.skip_previous_rounded, size: 45, color: Colors.white), onPressed: () => widget.audioPlayer.seekToPrevious()),
-                    GestureDetector(
-                      onTap: () => _isPlaying ? widget.audioPlayer.pause() : widget.audioPlayer.play(),
-                      child: Container(
-                        width: 75, height: 75,
-                        decoration: BoxDecoration(color: _adaptiveColor.withOpacity(0.8), shape: BoxShape.circle, boxShadow: [BoxShadow(color: _adaptiveColor.withOpacity(0.4), blurRadius: 20)]),
-                        child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 40, color: Colors.white),
-                      ),
-                    ),
-                    IconButton(icon: const Icon(Icons.skip_next_rounded, size: 45, color: Colors.white), onPressed: () => widget.audioPlayer.seekToNext()),
-                    IconButton(icon: const Icon(Icons.repeat, color: Colors.white54), onPressed: () {}),
-                  ],
-                ),
-                const Spacer(flex: 2),
-                DraggableScrollableSheet(
-                  initialChildSize: 0.03, minChildSize: 0.03, maxChildSize: 0.6,
-                  builder: (context, scrollController) {
-                    return Container(
-                      decoration: BoxDecoration(color: Colors.black54, borderRadius: const BorderRadius.vertical(top: Radius.circular(30))),
-                      child: SingleChildScrollView(
-                        controller: scrollController,
-                        child: const Column(children: [SizedBox(height: 10), Icon(Icons.keyboard_arrow_up), Text("LETRAS", style: TextStyle(letterSpacing: 2)), SizedBox(height: 500, child: Center(child: Text("Busca letras...")))]),
-                      ),
-                    );
-                  }
-                ),
+                IconButton(icon: Icon(_isFav ? Icons.favorite : Icons.favorite_border, color: _isFav ? _adaptiveColor : Colors.white54, size: 30), onPressed: _toggleFav)
               ],
             ),
+          ),
+          const SizedBox(height: 20),
+          // Waveform
+          StreamBuilder<Duration>(
+            stream: widget.audioPlayer.positionStream,
+            builder: (context, snapshot) {
+              final position = snapshot.data ?? Duration.zero;
+              return StreamBuilder<Duration?>(
+                stream: widget.audioPlayer.durationStream,
+                builder: (context, snapshotDur) {
+                  final duration = snapshotDur.data ?? Duration.zero;
+                  return WaveformSlider(position: position, duration: duration, color: _adaptiveColor, onSeek: (p) => widget.audioPlayer.seek(p));
+                }
+              );
+            }
+          ),
+          const SizedBox(height: 20),
+          // Controles
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(icon: const Icon(Icons.skip_previous, size: 40), onPressed: () => widget.audioPlayer.seekToPrevious()),
+              Container(padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: _adaptiveColor.withOpacity(0.8), shape: BoxShape.circle), child: IconButton(icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 40), onPressed: () => _isPlaying ? widget.audioPlayer.pause() : widget.audioPlayer.play())),
+              IconButton(icon: const Icon(Icons.skip_next, size: 40), onPressed: () => widget.audioPlayer.seekToNext()),
+            ],
+          ),
+          const Spacer(),
+          // Lyrics Handle
+          DraggableScrollableSheet(
+            initialChildSize: 0.03, minChildSize: 0.03, maxChildSize: 0.6,
+            builder: (context, scrollController) {
+              return Container(
+                decoration: const BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+                child: SingleChildScrollView(controller: scrollController, child: const Column(children: [SizedBox(height: 10), Icon(Icons.keyboard_arrow_up), Text("LETRAS", style: TextStyle(letterSpacing: 2)), SizedBox(height: 500, child: Center(child: Text("Busca letras...")))])),
+              );
+            }
           ),
         ],
       ),
     );
   }
-
-  Widget _glassBtn(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: Colors.white, size: 20)),
-    );
-  }
-
-  String _formatDuration(Duration d) {
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return "$m:$s";
-  }
 }
 
+// --- 9. WIDGETS AUXILIARES ---
 class WaveformSlider extends StatelessWidget {
   final Duration position;
   final Duration duration;
@@ -901,10 +809,6 @@ class WaveformSlider extends StatelessWidget {
     final double percentage = duration.inMilliseconds == 0 ? 0 : position.inMilliseconds / duration.inMilliseconds;
     return GestureDetector(
       onHorizontalDragUpdate: (details) {
-        final box = context.findRenderObject() as RenderBox;
-        onSeek(Duration(milliseconds: (duration.inMilliseconds * (box.globalToLocal(details.globalPosition).dx / box.size.width).clamp(0.0, 1.0)).round()));
-      },
-      onTapUp: (details) {
         final box = context.findRenderObject() as RenderBox;
         onSeek(Duration(milliseconds: (duration.inMilliseconds * (box.globalToLocal(details.globalPosition).dx / box.size.width).clamp(0.0, 1.0)).round()));
       },
@@ -926,3 +830,16 @@ class WaveformSlider extends StatelessWidget {
     );
   }
 }
+
+// --- BUSCADOR ---
+class SongSearchDelegate extends SearchDelegate {
+  final OnAudioQuery audioQuery;
+  final Function(List<SongModel>, int) onPlay;
+  SongSearchDelegate(this.audioQuery, this.onPlay);
+
+  @override
+  ThemeData appBarTheme(BuildContext context) => ThemeData.dark().copyWith(scaffoldBackgroundColor: const Color(0xFF0F0F1E), appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF1E1E2C)));
+  @override
+  List<Widget>? buildActions(BuildContext context) => [IconButton(icon: const Icon(Icons.clear), onPressed: () => query = '')];
+  @override
+  Widget? buildLeading(BuildContext context) => IconButton(icon: const
