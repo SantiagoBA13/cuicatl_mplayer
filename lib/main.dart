@@ -10,7 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
-import 'package:android_intent_plus/android_intent.dart';
+import 'package:android_intent_plus/android_intent.dart'; // Solo Intent, sin equalizer_flutter
 
 // --- PUNTO DE ENTRADA ---
 Future<void> main() async {
@@ -223,12 +223,11 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   @override
   void initState() {
     super.initState();
-    // AQUÍ RESTAURAMOS LAS PÁGINAS REALES
     _pages = [
       HomeScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist),
-      Container(), // Placeholder para Player
-      FavoritesScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist), // FAVORITOS REAL
-      const SettingsScreen(), // CONFIG REAL
+      Container(),
+      FavoritesScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist),
+      const SettingsScreen(),
     ];
   }
 
@@ -320,11 +319,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _requestPermissions() async {
-    await [
-      Permission.storage,
-      Permission.audio,
-      Permission.notification,
-    ].request();
+    await [Permission.storage, Permission.audio, Permission.notification].request();
     setState(() {});
   }
 
@@ -373,8 +368,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildBodyContent() {
     if (_selectedTab == 0) return _buildHomeTab();
     if (_selectedTab == 1) return _buildMusicTab();
-    if (_selectedTab == 2) return _buildArtistsTab(); // Restaurado
-    if (_selectedTab == 3) return _buildPlaylistsTab(); // Restaurado
+    if (_selectedTab == 2) return _buildArtistsTab();
+    if (_selectedTab == 3) return _buildPlaylistsTab();
     return Container();
   }
 
@@ -468,7 +463,6 @@ class _HomeScreenState extends State<HomeScreen> {
           onTap: () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Creando Playlist..."))); },
         ),
         const Divider(color: Colors.white24),
-        // Aquí irían las playlists guardadas
         const ListTile(leading: Icon(Icons.queue_music), title: Text("Favoritos"), subtitle: Text("Automática")),
       ],
     );
@@ -498,7 +492,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- FAVORITOS (RESTAURADO) ---
+// --- FAVORITOS ---
 class FavoritesScreen extends StatefulWidget {
   final AudioPlayer audioPlayer;
   final Function(List<SongModel>, int) onPlayRequest;
@@ -510,15 +504,12 @@ class FavoritesScreen extends StatefulWidget {
 class _FavoritesScreenState extends State<FavoritesScreen> {
   List<String> _favIds = [];
   final OnAudioQuery _audioQuery = OnAudioQuery();
-  
   @override
   void initState() { super.initState(); _loadFavs(); }
-  
   Future<void> _loadFavs() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _favIds = prefs.getStringList('favorites') ?? []);
   }
-  
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -530,9 +521,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             builder: (context, item) {
               if (item.data == null) return const Center(child: CircularProgressIndicator());
               List<SongModel> favSongs = item.data!.where((element) => _favIds.contains(element.id.toString())).toList();
-              
               if (favSongs.isEmpty) return const Center(child: Text("Dale ❤️ a una canción para verla aquí."));
-              
               return ListView.builder(
                 padding: const EdgeInsets.only(bottom: 120),
                 itemCount: favSongs.length,
@@ -545,7 +534,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                        final prefs = await SharedPreferences.getInstance();
                        _favIds.remove(favSongs[index].id.toString());
                        await prefs.setStringList('favorites', _favIds);
-                       setState(() {}); // Recarga la lista
+                       setState(() {});
                     }),
                     onTap: () => widget.onPlayRequest(favSongs, index),
                   );
@@ -559,7 +548,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   }
 }
 
-// --- CONFIGURACIÓN (RESTAURADA CON LÓGICA) ---
+// --- CONFIGURACIÓN ---
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
   @override
@@ -573,26 +562,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void initState() { super.initState(); _loadSettings(); }
-  
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _hqAudio = prefs.getBool('hqAudio') ?? false;
-      _crossfade = prefs.getBool('crossfade') ?? false;
-      _amoled = prefs.getBool('amoled') ?? false;
-    });
+    setState(() { _hqAudio = prefs.getBool('hqAudio') ?? false; _crossfade = prefs.getBool('crossfade') ?? false; _amoled = prefs.getBool('amoled') ?? false; });
   }
-  
   Future<void> _saveSetting(String key, bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(key, value);
-    setState(() {
-      if(key == 'hqAudio') _hqAudio = value;
-      if(key == 'crossfade') _crossfade = value;
-      if(key == 'amoled') _amoled = value;
-    });
+    final prefs = await SharedPreferences.getInstance(); await prefs.setBool(key, value);
+    setState(() { if(key == 'hqAudio') _hqAudio = value; if(key == 'crossfade') _crossfade = value; if(key == 'amoled') _amoled = value; });
   }
   
+  // FUNCIÓN SEGURA EQ SISTEMA
   void _openSystemEQ() {
     try {
       const intent = AndroidIntent(
@@ -612,9 +591,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       children: [
         const Text("CONFIGURACIÓN", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 20),
-        const Text("AUDIO PRO", style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
-        SwitchListTile(value: _hqAudio, onChanged: (v) => _saveSetting('hqAudio', v), title: const Text("Forzar Alta Calidad"), subtitle: const Text("Intenta usar drivers Hi-Res"), activeColor: const Color(0xFF3B82F6)),
-        SwitchListTile(value: _crossfade, onChanged: (v) => _saveSetting('crossfade', v), title: const Text("Crossfade"), subtitle: const Text("Mezcla suave entre canciones"), activeColor: const Color(0xFF3B82F6)),
+        const Text("AUDIO PRO", style: TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold)),
+        SwitchListTile(value: _hqAudio, onChanged: (v) => _saveSetting('hqAudio', v), title: const Text("Forzar Alta Calidad"), subtitle: const Text("Intenta usar drivers Hi-Res"), activeColor: const Color(0xFF8B5CF6)),
+        SwitchListTile(value: _crossfade, onChanged: (v) => _saveSetting('crossfade', v), title: const Text("Crossfade"), subtitle: const Text("Mezcla suave entre canciones"), activeColor: const Color(0xFF8B5CF6)),
         ListTile(
           leading: const Icon(Icons.graphic_eq, color: Color(0xFFEC4899), size: 30),
           title: const Text("Ecualizador del Sistema"),
@@ -623,8 +602,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onTap: _openSystemEQ, 
         ),
         const Divider(color: Colors.white12),
-        const Text("APARIENCIA", style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
-        SwitchListTile(value: _amoled, onChanged: (v) => _saveSetting('amoled', v), title: const Text("Tema AMOLED Puro"), activeColor: const Color(0xFF3B82F6)),
+        const Text("APARIENCIA", style: TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold)),
+        SwitchListTile(value: _amoled, onChanged: (v) => _saveSetting('amoled', v), title: const Text("Tema AMOLED Puro"), activeColor: const Color(0xFF8B5CF6)),
         const Divider(color: Colors.white12),
         ListTile(leading: const Icon(Icons.logout, color: Colors.redAccent), title: const Text("Restablecer Usuario"), onTap: () async {
           final prefs = await SharedPreferences.getInstance(); prefs.remove('userName');
@@ -651,8 +630,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late PageController _pageController;
   int _currentIndex = 0;
   bool _isPlaying = false;
-  
-  Color _adaptiveColor = const Color(0xFF3B82F6);
+  bool _isFav = false;
+  Color _adaptiveColor = const Color(0xFF8B5CF6);
   Color _adaptiveBackground = const Color(0xFF0F0F1E);
 
   @override
@@ -662,7 +641,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _pageController = PageController(initialPage: widget.initialIndex);
 
     if (!widget.isContinuing) _initPlaylist();
-    else { _isPlaying = widget.audioPlayer.playing; _updatePalette(); }
+    else { _isPlaying = widget.audioPlayer.playing; _updatePalette(); _checkFav(); }
 
     widget.audioPlayer.currentIndexStream.listen((index) {
       if (index != null && mounted) {
@@ -671,6 +650,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _pageController.animateToPage(index, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
         }
         _updatePalette(); 
+        _checkFav();
       }
     });
 
@@ -706,7 +686,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final PaletteGenerator palette = await PaletteGenerator.fromImageProvider(MemoryImage(artworkBytes));
         if (mounted) {
           setState(() {
-            _adaptiveColor = palette.dominantColor?.color ?? const Color(0xFF3B82F6);
+            _adaptiveColor = palette.dominantColor?.color ?? const Color(0xFF8B5CF6);
             _adaptiveBackground = palette.darkMutedColor?.color ?? const Color(0xFF0F0F1E);
           });
         }
@@ -714,12 +694,43 @@ class _PlayerScreenState extends State<PlayerScreen> {
     } catch (e) { debugPrint("Error palette: $e"); }
   }
 
+  Future<void> _checkFav() async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> favs = prefs.getStringList('favorites') ?? [];
+    setState(() => _isFav = favs.contains(widget.initialQueue[_currentIndex].id.toString()));
+  }
+
+  Future<void> _toggleFav() async {
+    final song = widget.initialQueue[_currentIndex];
+    final prefs = await SharedPreferences.getInstance();
+    List<String> favs = prefs.getStringList('favorites') ?? [];
+    String id = song.id.toString();
+    if (favs.contains(id)) { favs.remove(id); setState(() => _isFav = false); }
+    else { favs.add(id); setState(() => _isFav = true); }
+    await prefs.setStringList('favorites', favs);
+  }
+  
+  // FUNCIONES DE 3 PUNTOS
+  void _showTimerDialog() {
+    showDialog(context: context, builder: (_) => AlertDialog(
+      backgroundColor: const Color(0xFF1E1E2C),
+      title: const Text("Temporizador"),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+         ListTile(title: const Text("15 Minutos"), onTap: (){ Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Se detendrá en 15 min"))); }),
+         ListTile(title: const Text("30 Minutos"), onTap: (){ Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Se detendrá en 30 min"))); }),
+      ]),
+    ));
+  }
+  
+  void _openEQ() {
+    try { const AndroidIntent(action: 'android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL').launch(); } catch(e){}
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentSong = widget.initialQueue[_currentIndex];
     return Scaffold(
       backgroundColor: Colors.transparent, 
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: () => Navigator.pop(context))),
       body: Stack(
         children: [
           // Fondo de color adaptativo + Blur
@@ -733,6 +744,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
           SafeArea(
             child: Column(
               children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: () => Navigator.pop(context)),
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert),
+                        color: const Color(0xFF1E1E2C),
+                        onSelected: (v) { if (v == 'timer') _showTimerDialog(); if (v == 'eq') _openEQ(); },
+                        itemBuilder: (c) => [const PopupMenuItem(value: 'timer', child: Text("Temporizador 🌙")), const PopupMenuItem(value: 'eq', child: Text("Ecualizador 🎚️"))],
+                      ),
+                    ],
+                  ),
+                ),
                 const Spacer(),
                 SizedBox(
                   height: 320,
@@ -751,8 +777,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
                 const SizedBox(height: 40),
-                Text(currentSong.title, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold), maxLines: 1),
-                Text(currentSong.artist ?? "Artista", style: GoogleFonts.outfit(fontSize: 16, color: Colors.white60)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 30),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(currentSong.title, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text(currentSong.artist ?? "Artista", style: GoogleFonts.outfit(fontSize: 16, color: Colors.white60)),
+                        ]),
+                      ),
+                      IconButton(icon: Icon(_isFav ? Icons.favorite : Icons.favorite_border, color: _isFav ? _adaptiveColor : Colors.white54, size: 30), onPressed: _toggleFav)
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 30),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -766,17 +804,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     IconButton(icon: const Icon(Icons.skip_next, size: 40), onPressed: () => widget.audioPlayer.seekToNext()),
                   ],
                 ),
-                // Swipe for lyrics (Restaurado)
                 const Spacer(),
                 DraggableScrollableSheet(
                   initialChildSize: 0.03, minChildSize: 0.03, maxChildSize: 0.6,
                   builder: (context, scrollController) {
                     return Container(
                       decoration: const BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
-                      child: SingleChildScrollView(
-                        controller: scrollController,
-                        child: const Column(children: [SizedBox(height: 10), Icon(Icons.keyboard_arrow_up), Text("LETRAS", style: TextStyle(letterSpacing: 2)), SizedBox(height: 500, child: Center(child: Text("Busca letras...")))]),
-                      ),
+                      child: SingleChildScrollView(controller: scrollController, child: const Column(children: [SizedBox(height: 10), Icon(Icons.keyboard_arrow_up), Text("LETRAS", style: TextStyle(letterSpacing: 2)), SizedBox(height: 500, child: Center(child: Text("Busca letras...")))])),
                     );
                   }
                 ),
@@ -807,3 +841,15 @@ class SongSearchDelegate extends SearchDelegate {
   Widget buildSuggestions(BuildContext context) {
     return FutureBuilder<List<SongModel>>(
       future: audioQuery.querySongs(),
+      builder: (context, item) {
+        if (!item.hasData) return const Center(child: CircularProgressIndicator());
+        final results = item.data!.where((s) => s.title.toLowerCase().contains(query.toLowerCase())).toList();
+        return ListView.builder(
+          itemCount: results.length, itemBuilder: (context, index) {
+            return ListTile(title: Text(results[index].title), subtitle: Text(results[index].artist ?? ""), onTap: () { close(context, null); onPlay(results, index); });
+          },
+        );
+      },
+    );
+  }
+}
