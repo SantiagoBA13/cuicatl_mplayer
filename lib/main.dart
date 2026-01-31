@@ -11,6 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 // --- PUNTO DE ENTRADA ---
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Configuración de pantalla completa
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -123,7 +124,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-// --- CONTROLADOR DE NAVEGACIÓN INFERIOR ---
+// --- CONTROLADOR DE NAVEGACIÓN ---
 class MainNavigationController extends StatefulWidget {
   const MainNavigationController({super.key});
   @override
@@ -134,24 +135,48 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   int _currentIndex = 0;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
+  // Mantenemos una lista global para saber qué se está reproduciendo
+  List<SongModel> _currentQueue = [];
+  int _currentSongIndex = -1;
+
   late List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
     _pages = [
-      HomeScreen(audioPlayer: _audioPlayer),
-      Container(), // Placeholder Player
-      FavoritesScreen(audioPlayer: _audioPlayer),
+      HomeScreen(
+        audioPlayer: _audioPlayer, 
+        onPlayRequest: _playPlaylist
+      ),
+      Container(), 
+      FavoritesScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist),
       const SettingsScreen(),
     ];
+  }
+
+  // Función Maestra para iniciar reproducción de listas
+  void _playPlaylist(List<SongModel> queue, int index) {
+    setState(() {
+      _currentQueue = queue;
+      _currentSongIndex = index;
+    });
+    
+    Navigator.push(context, PageRouteBuilder(
+      pageBuilder: (_, __, ___) => PlayerScreen(
+        initialQueue: queue, 
+        initialIndex: index, 
+        audioPlayer: _audioPlayer
+      ),
+      transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: _currentIndex == 1 
-          ? HomeScreen(audioPlayer: _audioPlayer) 
+          ? HomeScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist) 
           : _pages[_currentIndex],
       bottomNavigationBar: Container(
         margin: const EdgeInsets.fromLTRB(20, 0, 20, 30),
@@ -180,7 +205,13 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       onTap: () {
         if (index == 1) {
           if (_audioPlayer.audioSource != null) {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(audioPlayer: _audioPlayer)));
+            // Abrir player con el estado actual
+            Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(
+              initialQueue: _currentQueue, 
+              initialIndex: _audioPlayer.currentIndex ?? 0, 
+              audioPlayer: _audioPlayer,
+              isContinuing: true // Bandera para no reiniciar audio
+            )));
           } else {
              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Selecciona una canción primero")));
           }
@@ -197,10 +228,12 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   }
 }
 
-// --- PANTALLA PRINCIPAL (HOME) ---
+// --- HOME SCREEN ---
 class HomeScreen extends StatefulWidget {
   final AudioPlayer audioPlayer;
-  const HomeScreen({super.key, required this.audioPlayer});
+  final Function(List<SongModel>, int) onPlayRequest;
+  
+  const HomeScreen({super.key, required this.audioPlayer, required this.onPlayRequest});
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -226,22 +259,8 @@ class _HomeScreenState extends State<HomeScreen> {
     List<SongModel> songs = await _audioQuery.querySongs();
     if (songs.isNotEmpty) {
       songs.shuffle();
-      _openPlayer(songs.first, songs); 
+      widget.onPlayRequest(songs, 0);
     }
-  }
-
-  void _openPlayer(dynamic item, List<dynamic> queue) {
-    SongModel song;
-    if (item is SongModel) {
-      song = item;
-    } else {
-      return; 
-    }
-
-    Navigator.push(context, PageRouteBuilder(
-      pageBuilder: (_, __, ___) => PlayerScreen(song: song, audioPlayer: widget.audioPlayer),
-      transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
-    ));
   }
 
   @override
@@ -368,7 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 return ListView.builder(
                   padding: const EdgeInsets.only(bottom: 100),
                   itemCount: item.data!.length,
-                  itemBuilder: (context, index) => _songTile(item.data![index]),
+                  itemBuilder: (context, index) => _songTile(item.data![index], item.data!, index),
                 );
               },
             ),
@@ -376,50 +395,24 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       );
     }
-    
+    // Tabs de Artistas y Álbumes simplificados para ahorrar espacio
     if (_selectedTab == 1) {
       return FutureBuilder<List<ArtistModel>>(
-        future: _audioQuery.queryArtists(sortType: ArtistSortType.ARTIST, orderType: OrderType.ASC_OR_SMALLER, uriType: UriType.EXTERNAL, ignoreCase: true),
+        future: _audioQuery.queryArtists(),
         builder: (context, item) {
           if (item.data == null) return const Center(child: CircularProgressIndicator());
           return ListView.builder(
             padding: const EdgeInsets.only(bottom: 100),
             itemCount: item.data!.length,
-            itemBuilder: (context, index) {
-              return ListTile(
-                leading: Container(height: 50, width: 50, decoration: const BoxDecoration(color: Colors.white10, shape: BoxShape.circle), child: const Icon(Icons.person, color: Colors.white54)),
-                title: Text(item.data![index].artist, style: const TextStyle(fontWeight: FontWeight.bold)),
+            itemBuilder: (context, index) => ListTile(
+                leading: const CircleAvatar(backgroundColor: Colors.white10, child: Icon(Icons.person)),
+                title: Text(item.data![index].artist),
                 subtitle: Text("${item.data![index].numberOfTracks} canciones"),
                 onTap: () async {
-                  List<SongModel> artistSongs = await _audioQuery.queryAudiosFrom(AudiosFromType.ARTIST_ID, item.data![index].id);
-                  if(artistSongs.isNotEmpty) _openPlayer(artistSongs.first, artistSongs);
+                   List<SongModel> songs = await _audioQuery.queryAudiosFrom(AudiosFromType.ARTIST_ID, item.data![index].id);
+                   widget.onPlayRequest(songs, 0);
                 },
-              );
-            },
-          );
-        },
-      );
-    }
-
-    if (_selectedTab == 2) {
-      return FutureBuilder<List<AlbumModel>>(
-        future: _audioQuery.queryAlbums(sortType: AlbumSortType.ALBUM, orderType: OrderType.ASC_OR_SMALLER, uriType: UriType.EXTERNAL, ignoreCase: true),
-        builder: (context, item) {
-          if (item.data == null) return const Center(child: CircularProgressIndicator());
-          return ListView.builder(
-            padding: const EdgeInsets.only(bottom: 100),
-            itemCount: item.data!.length,
-            itemBuilder: (context, index) {
-              return ListTile(
-                leading: QueryArtworkWidget(id: item.data![index].id, type: ArtworkType.ALBUM, nullArtworkWidget: Container(width: 50, height: 50, color: Colors.white10, child: const Icon(Icons.album))),
-                title: Text(item.data![index].album, style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(item.data![index].artist ?? "Varios"),
-                onTap: () async {
-                  List<SongModel> albumSongs = await _audioQuery.queryAudiosFrom(AudiosFromType.ALBUM_ID, item.data![index].id);
-                  if(albumSongs.isNotEmpty) _openPlayer(albumSongs.first, albumSongs);
-                },
-              );
-            },
+              ),
           );
         },
       );
@@ -427,21 +420,22 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container();
   }
 
-  Widget _songTile(SongModel song) {
+  Widget _songTile(SongModel song, List<SongModel> fullList, int index) {
     return ListTile(
       leading: ClipRRect(borderRadius: BorderRadius.circular(10), child: QueryArtworkWidget(id: song.id, type: ArtworkType.AUDIO, nullArtworkWidget: Container(width: 50, height: 50, color: Colors.white10, child: const Icon(Icons.music_note)))),
       title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text(song.artist ?? "Desconocido", style: const TextStyle(fontSize: 12, color: Colors.white54)),
       trailing: const Icon(Icons.play_circle_outline, color: Color(0xFF8B5CF6)),
-      onTap: () => _openPlayer(song, []),
+      onTap: () => widget.onPlayRequest(fullList, index),
     );
   }
 }
 
-// --- PANTALLA FAVORITOS ---
+// --- FAVORITOS ---
 class FavoritesScreen extends StatefulWidget {
   final AudioPlayer audioPlayer;
-  const FavoritesScreen({super.key, required this.audioPlayer});
+  final Function(List<SongModel>, int) onPlayRequest;
+  const FavoritesScreen({super.key, required this.audioPlayer, required this.onPlayRequest});
   @override
   State<FavoritesScreen> createState() => _FavoritesScreenState();
 }
@@ -478,18 +472,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 leading: QueryArtworkWidget(id: favSongs[index].id, type: ArtworkType.AUDIO, nullArtworkWidget: const Icon(Icons.music_note)),
                 title: Text(favSongs[index].title),
                 subtitle: Text(favSongs[index].artist ?? ""),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.redAccent),
-                  onPressed: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    _favIds.remove(favSongs[index].id.toString());
-                    await prefs.setStringList('favorites', _favIds);
-                    setState(() {});
-                  },
-                ),
-                onTap: () {
-                   Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(song: favSongs[index], audioPlayer: widget.audioPlayer)));
-                },
+                onTap: () => widget.onPlayRequest(favSongs, index),
               );
             },
           );
@@ -499,7 +482,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   }
 }
 
-// --- PANTALLA AJUSTES ---
+// --- AJUSTES ---
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
   @override
@@ -510,26 +493,16 @@ class SettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            ListTile(
-              leading: const Icon(Icons.graphic_eq, color: Color(0xFF8B5CF6), size: 30),
-              title: const Text("Ecualizador"),
-              subtitle: const Text("Abrir ecualizador del sistema"),
-              onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Abriendo EQ del sistema..."))),
-            ),
-            const Divider(color: Colors.white24),
-            ListTile(
-              leading: const Icon(Icons.color_lens, color: Color(0xFF34D399), size: 30),
-              title: const Text("Personalización"),
-              subtitle: const Text("Cambiar nombre de usuario"),
+             ListTile(leading: const Icon(Icons.graphic_eq), title: const Text("Ecualizador"), onTap: (){}),
+             const Divider(color: Colors.white24),
+             ListTile(
+              leading: const Icon(Icons.person_remove), 
+              title: const Text("Cerrar Sesión"), 
               onTap: () async {
                 final prefs = await SharedPreferences.getInstance();
                 prefs.remove('userName');
                 if(context.mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const OnboardingScreen()));
-              },
-            ),
-             const Divider(color: Colors.white24),
-             const SizedBox(height: 20),
-             const Text("Versión Cuicatl 2.5 - Build Github", style: TextStyle(color: Colors.white30)),
+              }),
           ],
         ),
       ),
@@ -537,52 +510,93 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-// --- REPRODUCTOR (PLAYER) ESTILO ECHOO (ACTUALIZADO) ---
+// --- REPRODUCTOR (PLAYER) OPTIMIZADO ---
 class PlayerScreen extends StatefulWidget {
-  final SongModel? song;
+  final List<SongModel> initialQueue;
+  final int initialIndex;
   final AudioPlayer audioPlayer;
-  const PlayerScreen({super.key, this.song, required this.audioPlayer});
+  final bool isContinuing;
+
+  const PlayerScreen({
+    super.key, 
+    required this.initialQueue, 
+    required this.initialIndex, 
+    required this.audioPlayer,
+    this.isContinuing = false
+  });
+
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderStateMixin {
+class _PlayerScreenState extends State<PlayerScreen> {
+  late PageController _pageController;
+  int _currentIndex = 0;
   bool _isPlaying = false;
   bool _isFav = false;
-  Duration _duration = Duration.zero;
-  Duration _position = Duration.zero;
-  SongModel? _currentSong;
   
-  late AnimationController _waveController;
+  // Usamos Streams para evitar reconstruir todo el Widget
+  Stream<Duration>? _positionStream;
+  Stream<Duration?>? _durationStream;
+  Stream<int?>? _currentIndexStream;
 
   @override
   void initState() {
     super.initState();
-    _currentSong = widget.song;
-    _waveController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000))..repeat();
-    if (_currentSong != null) _initPlayer();
-    else _syncPlayer(); 
-    _checkFav();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+    
+    // Iniciar Streams
+    _positionStream = widget.audioPlayer.positionStream;
+    _durationStream = widget.audioPlayer.durationStream;
+    _currentIndexStream = widget.audioPlayer.currentIndexStream;
+
+    if (!widget.isContinuing) {
+      _initPlaylist();
+    } else {
+      _isPlaying = widget.audioPlayer.playing;
+      _checkFav(widget.initialQueue[widget.initialIndex]);
+    }
+
+    // Escuchar cambios de canción para el carrusel y favoritos
+    widget.audioPlayer.currentIndexStream.listen((index) {
+      if (index != null && mounted) {
+        setState(() => _currentIndex = index);
+        if (_pageController.hasClients && _pageController.page?.round() != index) {
+          _pageController.animateToPage(index, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+        }
+        _checkFav(widget.initialQueue[index]);
+      }
+    });
+
+    widget.audioPlayer.playerStateStream.listen((state) {
+      if (mounted) setState(() => _isPlaying = state.playing);
+    });
   }
 
-  @override
-  void dispose() {
-    _waveController.dispose();
-    super.dispose();
+  Future<void> _initPlaylist() async {
+    try {
+      final playlist = ConcatenatingAudioSource(
+        children: widget.initialQueue.map((song) => AudioSource.uri(Uri.parse(song.uri!))).toList(),
+      );
+      await widget.audioPlayer.setAudioSource(playlist, initialIndex: widget.initialIndex);
+      widget.audioPlayer.play();
+    } catch (e) {
+      debugPrint("Error loading playlist: $e");
+    }
   }
 
-  Future<void> _checkFav() async {
-    if (_currentSong == null) return;
+  Future<void> _checkFav(SongModel song) async {
     final prefs = await SharedPreferences.getInstance();
     List<String> favs = prefs.getStringList('favorites') ?? [];
-    setState(() => _isFav = favs.contains(_currentSong!.id.toString()));
+    setState(() => _isFav = favs.contains(song.id.toString()));
   }
 
   Future<void> _toggleFav() async {
-    if (_currentSong == null) return;
+    final song = widget.initialQueue[_currentIndex];
     final prefs = await SharedPreferences.getInstance();
     List<String> favs = prefs.getStringList('favorites') ?? [];
-    String id = _currentSong!.id.toString();
+    String id = song.id.toString();
     
     if (favs.contains(id)) {
       favs.remove(id);
@@ -594,57 +608,49 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
     await prefs.setStringList('favorites', favs);
   }
 
-  Future<void> _initPlayer() async {
-    try {
-      await widget.audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(_currentSong!.uri!)));
-      widget.audioPlayer.play();
-      _syncPlayer();
-    } catch (e) { debugPrint("Error: $e"); }
-  }
-
-  void _syncPlayer() {
-    widget.audioPlayer.playerStateStream.listen((state) { 
-      if(mounted) {
-        setState(() => _isPlaying = state.playing);
-        if(!state.playing) _waveController.stop(); else _waveController.repeat();
-      }
-    });
-    widget.audioPlayer.durationStream.listen((d) { if(mounted) setState(() => _duration = d ?? Duration.zero); });
-    widget.audioPlayer.positionStream.listen((p) { if(mounted) setState(() => _position = p); });
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_currentSong == null && widget.audioPlayer.audioSource == null) return const Scaffold(body: Center(child: Text("...")));
+    if (widget.initialQueue.isEmpty) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
+    final currentSong = widget.initialQueue.isNotEmpty ? widget.initialQueue[_currentIndex] : null;
 
     return Scaffold(
       body: Stack(
         children: [
-          // 1. FONDO ATMOSFÉRICO
-          Positioned.fill(
-            child: QueryArtworkWidget(
-              id: _currentSong?.id ?? 0, 
-              type: ArtworkType.AUDIO,
-              artworkHeight: MediaQuery.of(context).size.height,
-              artworkWidth: MediaQuery.of(context).size.height,
-              artworkFit: BoxFit.cover,
-              nullArtworkWidget: Container(color: const Color(0xFF2E1065)),
+          // 1. FONDO ESTÁTICO (Optimizado para evitar Flickering)
+          // Usamos un RepaintBoundary para aislar el pintado del fondo
+          RepaintBoundary(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: QueryArtworkWidget(
+                    id: currentSong?.id ?? 0, 
+                    type: ArtworkType.AUDIO,
+                    artworkHeight: MediaQuery.of(context).size.height,
+                    artworkWidth: MediaQuery.of(context).size.height,
+                    artworkQuality: FilterQuality.high, // Máxima calidad
+                    size: 1000,
+                    artworkFit: BoxFit.cover,
+                    nullArtworkWidget: Container(color: const Color(0xFF2E1065)),
+                  ),
+                ),
+                Positioned.fill(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50), child: Container(color: Colors.black.withOpacity(0.6)))),
+              ],
             ),
           ),
-          Positioned.fill(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60), child: Container(color: Colors.black.withOpacity(0.5)))),
 
-          // CONTENIDO
+          // 2. CONTENIDO PRINCIPAL
           SafeArea(
             child: Column(
               children: [
-                // 2. HEADER GLASS
+                // Header Glass
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       _glassBtn(Icons.keyboard_arrow_down, () => Navigator.pop(context)),
-                      Text(_currentSong?.artist ?? "Artista", style: GoogleFonts.outfit(fontSize: 14, color: Colors.white70, fontWeight: FontWeight.w500)),
+                      Text(currentSong?.artist ?? "Artista", style: GoogleFonts.outfit(fontSize: 14, color: Colors.white70, fontWeight: FontWeight.w500)),
                       _glassBtn(Icons.ios_share, () {}),
                     ],
                   ),
@@ -652,25 +658,43 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
                 
                 const Spacer(),
 
-                // 3. CARÁTULA FLOTANTE 3D
-                Container(
-                  height: 300, width: 300,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(30),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 50, offset: const Offset(0, 20))]
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(30),
-                    child: QueryArtworkWidget(
-                      id: _currentSong?.id ?? 0, type: ArtworkType.AUDIO, artworkHeight: 300, artworkWidth: 300,
-                      nullArtworkWidget: Container(color: Colors.white10, child: const Icon(Icons.music_note, size: 100, color: Colors.white24)),
-                    ),
+                // 3. CARRUSEL DE CARÁTULAS (PageView)
+                SizedBox(
+                  height: 320,
+                  child: PageView.builder(
+                    controller: _pageController,
+                    itemCount: widget.initialQueue.length,
+                    onPageChanged: (index) {
+                      widget.audioPlayer.seek(Duration.zero, index: index);
+                    },
+                    itemBuilder: (context, index) {
+                      final song = widget.initialQueue[index];
+                      return Center(
+                        child: Container(
+                          height: 300, width: 300,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 30, offset: const Offset(0, 15))]
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(30),
+                            child: QueryArtworkWidget(
+                              id: song.id, type: ArtworkType.AUDIO, 
+                              artworkHeight: 300, artworkWidth: 300,
+                              artworkQuality: FilterQuality.high,
+                              size: 1000, // Fuerza alta resolución
+                              nullArtworkWidget: Container(color: Colors.white10, child: const Icon(Icons.music_note, size: 100, color: Colors.white24)),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
 
-                const SizedBox(height: 50),
+                const SizedBox(height: 40),
 
-                // 4. INFO ALINEADA IZQUIERDA
+                // 4. INFO TEXTO
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 30),
                   child: Row(
@@ -681,10 +705,10 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Año 202X", style: GoogleFonts.outfit(fontSize: 12, color: Colors.white60)),
+                            Text(currentSong?.artist ?? "Unknown", style: GoogleFonts.outfit(fontSize: 14, color: Colors.white60)),
                             const SizedBox(height: 4),
                             Text(
-                              _currentSong?.title ?? "Canción", 
+                              currentSong?.title ?? "Canción", 
                               style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold),
                               maxLines: 1, overflow: TextOverflow.ellipsis
                             ),
@@ -701,90 +725,71 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
 
                 const SizedBox(height: 30),
 
-                // 5. VISUALIZADOR ONDA
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      Text(_formatDuration(_position), style: const TextStyle(fontSize: 12, color: Colors.white60)),
-                      Expanded(
-                        child: SizedBox(
-                          height: 60,
-                          child: AnimatedBuilder(
-                            animation: _waveController,
-                            builder: (context, child) {
-                              return Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: List.generate(20, (index) {
-                                  double height = 10 + Random().nextInt(40).toDouble() * (_isPlaying ? 1.0 : 0.1); 
-                                  return Container(
-                                    margin: const EdgeInsets.symmetric(horizontal: 3),
-                                    width: 4,
-                                    height: height,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.6),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  );
-                                }),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                      Text(_formatDuration(_duration), style: const TextStyle(fontSize: 12, color: Colors.white60)),
-                    ],
-                  ),
-                ),
-                // Slider invisible
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0),
-                    trackHeight: 0,
-                    overlayShape: SliderComponentShape.noOverlay,
-                  ),
-                  child: Slider(
-                    min: 0, max: _duration.inSeconds.toDouble(),
-                    value: _position.inSeconds.toDouble().clamp(0, _duration.inSeconds.toDouble()),
-                    onChanged: (v) => widget.audioPlayer.seek(Duration(seconds: v.toInt())),
-                  ),
+                // 5. BARRA DE ESPECTRO INTERACTIVA (Waveform SeekBar)
+                StreamBuilder<Duration>(
+                  stream: _positionStream,
+                  builder: (context, snapshot) {
+                    final position = snapshot.data ?? Duration.zero;
+                    return StreamBuilder<Duration?>(
+                      stream: _durationStream,
+                      builder: (context, snapshotDur) {
+                        final duration = snapshotDur.data ?? Duration.zero;
+                        return Column(
+                          children: [
+                            // La Barra de Onda
+                            WaveformSlider(
+                              position: position,
+                              duration: duration,
+                              onSeek: (seekPos) => widget.audioPlayer.seek(seekPos),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(_formatDuration(position), style: const TextStyle(fontSize: 12, color: Colors.white60)),
+                                  Text(_formatDuration(duration), style: const TextStyle(fontSize: 12, color: Colors.white60)),
+                                ],
+                              ),
+                            )
+                          ],
+                        );
+                      }
+                    );
+                  }
                 ),
 
                 const SizedBox(height: 10),
 
-                // 6. CONTROLES GLASS
+                // 6. CONTROLES
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     IconButton(icon: const Icon(Icons.shuffle, color: Colors.white54), onPressed: () {}),
-                    IconButton(icon: const Icon(Icons.skip_previous_rounded, size: 40, color: Colors.white), onPressed: () {}),
+                    IconButton(icon: const Icon(Icons.skip_previous_rounded, size: 45, color: Colors.white), 
+                      onPressed: () => widget.audioPlayer.seekToPrevious()),
                     
                     GestureDetector(
                       onTap: () => _isPlaying ? widget.audioPlayer.pause() : widget.audioPlayer.play(),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(50),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                          child: Container(
-                            width: 70, height: 70,
-                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
-                            child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 35, color: Colors.white),
-                          ),
-                        ),
+                      child: Container(
+                        width: 75, height: 75,
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                        child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 40, color: Colors.white),
                       ),
                     ),
                     
-                    IconButton(icon: const Icon(Icons.skip_next_rounded, size: 40, color: Colors.white), onPressed: () {}),
+                    IconButton(icon: const Icon(Icons.skip_next_rounded, size: 45, color: Colors.white), 
+                      onPressed: () => widget.audioPlayer.seekToNext()),
                     IconButton(icon: const Icon(Icons.repeat, color: Colors.white54), onPressed: () {}),
                   ],
                 ),
                 
                 const Spacer(),
                 
-                // 7. SWIPE HANDLE
+                // 7. SWIPE HANDLE (Extendido al fondo)
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  padding: EdgeInsets.fromLTRB(0, 15, 0, MediaQuery.of(context).padding.bottom + 10),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.05),
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
@@ -807,15 +812,10 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
   Widget _glassBtn(IconData icon, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
-      child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            color: Colors.white.withOpacity(0.1),
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
-        ),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
+        child: Icon(icon, color: Colors.white, size: 20),
       ),
     );
   }
@@ -824,5 +824,67 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return "$m:$s";
+  }
+}
+
+// --- WIDGET PERSONALIZADO: WAVEFORM SLIDER ---
+class WaveformSlider extends StatelessWidget {
+  final Duration position;
+  final Duration duration;
+  final Function(Duration) onSeek;
+
+  const WaveformSlider({
+    super.key, 
+    required this.position, 
+    required this.duration, 
+    required this.onSeek
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Número de barras a dibujar
+    const int barCount = 35; 
+    final double percentage = duration.inMilliseconds == 0 ? 0 : position.inMilliseconds / duration.inMilliseconds;
+    
+    return GestureDetector(
+      onHorizontalDragUpdate: (details) {
+        final box = context.findRenderObject() as RenderBox;
+        final localPos = box.globalToLocal(details.globalPosition);
+        final p = (localPos.dx / box.size.width).clamp(0.0, 1.0);
+        onSeek(Duration(milliseconds: (duration.inMilliseconds * p).round()));
+      },
+      onTapUp: (details) {
+        final box = context.findRenderObject() as RenderBox;
+        final localPos = box.globalToLocal(details.globalPosition);
+        final p = (localPos.dx / box.size.width).clamp(0.0, 1.0);
+        onSeek(Duration(milliseconds: (duration.inMilliseconds * p).round()));
+      },
+      child: Container(
+        height: 50,
+        width: double.infinity,
+        color: Colors.transparent, // Necesario para detectar taps
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: List.generate(barCount, (index) {
+            // Generamos una "onda" visual simétrica falsa pero bonita
+            final double waveHeight = 10 + (15 * sin(index * 0.5).abs()) + (Random(index).nextInt(15).toDouble());
+            final bool isActive = index / barCount <= percentage;
+
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 4,
+              height: isActive ? waveHeight + 5 : waveHeight, // Efecto "pop" al activarse
+              decoration: BoxDecoration(
+                color: isActive ? Colors.white : Colors.white24,
+                borderRadius: BorderRadius.circular(5),
+                boxShadow: isActive ? [BoxShadow(color: const Color(0xFF8B5CF6).withOpacity(0.5), blurRadius: 5)] : null
+              ),
+            );
+          }),
+        ),
+      ),
+    );
   }
 }
