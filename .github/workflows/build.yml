@@ -20,14 +20,17 @@ jobs:
       - name: Generar estructura Android
         run: flutter create . --project-name cuicatl_mplayer --org com.cuicatl
 
-      # --- INYECCIÓN DE PERMISOS CRÍTICOS ---
+      # --- INYECCIÓN DE PERMISOS CRÍTICOS PARA AUDIO Y NOTIFICACIONES ---
       - name: Inyectar Manifiesto Android
         run: |
-          sed -i 's/<application/<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"\/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"\/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"\/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"\/>\n    <application/g' android/app/src/main/AndroidManifest.xml
+          # 1. Permisos: Lectura de Audio, Almacenamiento, Wake Lock (para que no se apague), Servicio
+          sed -i 's/<application/<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"\/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"\/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"\/>\n    <application/g' android/app/src/main/AndroidManifest.xml
           
+          # 2. Nombre de la actividad principal
           sed -i 's/android:name="io.flutter.app.FlutterApplication"/android:name="\$\{applicationName\}"/g' android/app/src/main/AndroidManifest.xml
           
-          sed -i 's/<\/application>/<service android:name="com.ryanheise.just_audio_background.AudioService" android:foregroundServiceType="mediaPlayback" android:exported="true"><intent-filter><action android:name="android.media.browse.MediaBrowserService" \/><\/intent-filter><\/service><\/application>/g' android/app/src/main/AndroidManifest.xml
+          # 3. Servicio de Notificaciones (Just Audio Background)
+          sed -i 's/<\/application>/<service android:name="com.ryanheise.just_audio_background.AudioService" android:foregroundServiceType="mediaPlayback" android:exported="true" android:permission="android.permission.BIND_FOREGROUND_SERVICE_MEDIA_PLAYBACK"><intent-filter><action android:name="android.media.browse.MediaBrowserService" \/><\/intent-filter><\/service><\/application>/g' android/app/src/main/AndroidManifest.xml
 
       - name: Instalar dependencias
         run: flutter pub get
@@ -36,6 +39,5 @@ jobs:
       - name: Subir APK
         uses: actions/upload-artifact@v4
         with:
-          name: cuicatl-app-v5-final
+          name: cuicatl-app-v7-audiofix
           path: build/app/outputs/flutter-apk/app-release.apk
-          
