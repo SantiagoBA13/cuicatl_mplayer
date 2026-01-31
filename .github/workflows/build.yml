@@ -20,20 +20,23 @@ jobs:
           flutter-version: '3.19.0'
           channel: 'stable'
 
-      - name: Configurar Entorno Android
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Create Android platform (if missing)
         run: |
-          flutter pub get
           if [ ! -d "android" ]; then
             flutter create --platforms=android .
           fi
 
-      - name: Forzar SDK 34 (Android 14)
+      - name: Force Android SDK 34 (compileSdk/targetSdk)
         run: |
           # Groovy
           if [ -f "android/app/build.gradle" ]; then
             echo "Actualizando build.gradle (Groovy)..."
             sed -i 's/compileSdkVersion [0-9]\+/compileSdkVersion 34/g' android/app/build.gradle || true
             sed -i 's/targetSdkVersion [0-9]\+/targetSdkVersion 34/g' android/app/build.gradle || true
+            sed -i 's/minSdkVersion [0-9]\+/minSdkVersion 23/g' android/app/build.gradle || true
           fi
 
           # Kotlin DSL
@@ -41,9 +44,10 @@ jobs:
             echo "Actualizando build.gradle.kts (Kotlin)..."
             sed -i 's/compileSdk = [0-9]\+/compileSdk = 34/g' android/app/build.gradle.kts || true
             sed -i 's/targetSdk = [0-9]\+/targetSdk = 34/g' android/app/build.gradle.kts || true
+            sed -i 's/minSdk = [0-9]\+/minSdk = 23/g' android/app/build.gradle.kts || true
           fi
 
-      - name: Parchear permisos Android 14+ (idempotente, sin romper XML)
+      - name: Parchear permisos Android 14+ (Python Script)
         run: |
           python3 - << 'PY'
           from pathlib import Path
@@ -54,34 +58,45 @@ jobs:
 
           text = manifest_path.read_text(encoding="utf-8")
 
-          # Inserta una línea antes de <application> solo si no existe ya
-          def ensure_before_application(line: str):
-              nonlocal text
-              if "<application" not in text:
+          def insert_once(current_text, line):
+              if line in current_text:
+                  return current_text
+              if "<application" not in current_text:
                   raise SystemExit("ERROR: Manifest no contiene <application>")
-              if line in text:
-                  return
-              text = text.replace("<application", f"{line}\n<application", 1)
+              return current_text.replace("<application", f"{line}\n    <application", 1)
 
-          # Permisos Android 13/14+
-          ensure_before_application('<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />')
-          ensure_before_application('<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />')
+          # 1. Permisos Android 13 / 14
+          text = insert_once(text, '<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />')
+          text = insert_once(text, '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />')
 
-          # Legacy (solo hasta SDK 32)
-          ensure_before_application('<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />')
+          # 2. Legacy (solo hasta SDK 32)
+          text = insert_once(text, '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />')
 
-          # Foreground playback
-          ensure_before_application('<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />')
-          ensure_before_application('<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />')
+          # 3. Foreground playback & Wake Lock (Vitales para que no se corte la música)
+          text = insert_once(text, '<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />')
+          text = insert_once(text, '<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />')
+          text = insert_once(text, '<uses-permission android:name="android.permission.WAKE_LOCK" />')
 
-          # Wake lock (opcional pero útil en reproducción)
-          ensure_before_application('<uses-permission android:name="android.permission.WAKE_LOCK" />')
+          # 4. SERVICIO DE AUDIO (Inyección de seguridad para evitar crashes)
+          # Aunque el plugin debería hacerlo, inyectarlo manualmente asegura que funcione en el APK release.
+          service_xml = """
+                  <service android:name="com.ryanheise.just_audio_background.AudioService"
+                      android:foregroundServiceType="mediaPlayback"
+                      android:exported="true"
+                      android:permission="android.permission.BIND_FOREGROUND_SERVICE_MEDIA_PLAYBACK">
+                      <intent-filter>
+                          <action android:name="android.media.browse.MediaBrowserService" />
+                      </intent-filter>
+                  </service>
+          """
+          if "com.ryanheise.just_audio_background.AudioService" not in text:
+              text = text.replace("</application>", f"{service_xml}\n    </application>")
 
-          # NO inyectamos <service> manualmente: evita errores por nombres/versiones.
-          # just_audio_background/audio_service normalmente lo hacen via manifest merge.
+          # 5. Corregir nombre de actividad principal
+          text = text.replace('android:name="io.flutter.app.FlutterApplication"', 'android:name="${applicationName}"')
 
           manifest_path.write_text(text, encoding="utf-8")
-          print("OK: permisos parchados sin duplicar ni romper XML.")
+          print("OK: Permisos y servicios de Android 14 parchados correctamente.")
           PY
 
       - name: Construir APK
@@ -90,5 +105,5 @@ jobs:
       - name: Subir APK
         uses: actions/upload-artifact@v4
         with:
-          name: cuicatl-app-android14
+          name: cuicatl-app-v14-python-final
           path: build/app/outputs/flutter-apk/app-release.apk
