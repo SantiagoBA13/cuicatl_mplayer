@@ -7,9 +7,10 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+// PUNTO DE ENTRADA
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // MODO INMERSIVO: Oculta barras de sistema
+  // Configuración de pantalla completa (Inmersiva)
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -19,8 +20,10 @@ void main() async {
   runApp(const CuicatlApp());
 }
 
+// APP CONFIGURACIÓN
 class CuicatlApp extends StatelessWidget {
   const CuicatlApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -41,6 +44,8 @@ class CuicatlApp extends StatelessWidget {
     );
   }
 }
+
+// GESTOR DE ESTADO (Login/Home)
 class RootHandler extends StatefulWidget {
   const RootHandler({super.key});
   @override
@@ -49,15 +54,20 @@ class RootHandler extends StatefulWidget {
 
 class _RootHandlerState extends State<RootHandler> {
   bool? _hasName;
+
   @override
   void initState() {
     super.initState();
     _checkUserData();
   }
+
   Future<void> _checkUserData() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() { _hasName = prefs.containsKey('userName'); });
+    setState(() {
+      _hasName = prefs.containsKey('userName');
+    });
   }
+
   @override
   Widget build(BuildContext context) {
     if (_hasName == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -66,6 +76,7 @@ class _RootHandlerState extends State<RootHandler> {
   }
 }
 
+// PANTALLA DE BIENVENIDA
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
   @override
@@ -74,14 +85,18 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _nameController = TextEditingController();
+
   Future<void> _saveName() async {
     if (_nameController.text.isNotEmpty) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('userName', _nameController.text);
-      if(mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainHomeScreen()));
+      if (mounted) {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainHomeScreen()));
+      }
     }
   }
-   @override
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
@@ -128,6 +143,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 }
+
+// PANTALLA PRINCIPAL (HOME)
 class MainHomeScreen extends StatefulWidget {
   const MainHomeScreen({super.key});
   @override
@@ -155,7 +172,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     await [Permission.storage, Permission.audio, Permission.mediaLibrary].request();
     setState(() {});
   }
-   @override
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
@@ -195,7 +213,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-                            Padding(
+              Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Text("For you ($_userName)", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
@@ -233,7 +251,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       bottomNavigationBar: _buildBottomNavBar(),
     );
   }
-   Widget _buildTab(String text, bool isSelected) {
+
+  Widget _buildTab(String text, bool isSelected) {
     return Container(
       margin: const EdgeInsets.only(right: 10),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -289,6 +308,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       ),
     );
   }
+
   Widget _buildSongTile(SongModel song, List<SongModel> queue) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
@@ -312,6 +332,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   }
 }
 
+// PANTALLA REPRODUCTOR (PLAYER)
 class PlayerScreen extends StatefulWidget {
   final SongModel song;
   final AudioPlayer audioPlayer;
@@ -330,7 +351,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     super.initState();
     _initPlayer();
   }
-   Future<void> _initPlayer() async {
+
+  Future<void> _initPlayer() async {
     try {
       await widget.audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(widget.song.uri!)));
       widget.audioPlayer.play();
@@ -365,7 +387,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
               child: Container(color: Colors.transparent),
             ),
-                        Padding(
+            Padding(
               padding: const EdgeInsets.symmetric(horizontal: 30),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
