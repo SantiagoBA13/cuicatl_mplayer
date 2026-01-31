@@ -1,16 +1,19 @@
 import 'dart:ui';
 import 'dart:math';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:on_audio_query/on_audio_query.dart';
+import 'package:permission_handler/permission_handler.dart'; // Aunque lo usamos en permissions.dart, a veces es útil aquí
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:android_intent_plus/android_intent.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
-// IMPORTAMOS TU NUEVO ARCHIVO DE PERMISOS
+// --- IMPORTACIÓN DE TU LÓGICA DE PERMISOS ---
 import 'permissions.dart'; 
 
 Future<void> main() async {
@@ -24,7 +27,7 @@ Future<void> main() async {
       notificationColor: const Color(0xFF8B5CF6),
     );
   } catch (e) {
-    debugPrint("Background init error: $e");
+    debugPrint("Background init error (No crítico): $e");
   }
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -277,6 +280,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   }
 }
 
+// --- HOME SCREEN (INTEGRACIÓN COMPLETA DE PERMISOS) ---
 class HomeScreen extends StatefulWidget {
   final AudioPlayer audioPlayer;
   final Function(List<SongModel>, int) onPlayRequest;
@@ -293,7 +297,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadName();
-    _initPermissions(); // Usamos tu clase nueva
+    // Aquí inicia la magia de permisos + carga
+    _initPermissions(); 
   }
 
   Future<void> _loadName() async {
@@ -301,16 +306,23 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _userName = prefs.getString('userName') ?? "Usuario");
   }
 
-  // --- INTEGRACIÓN DE TU CÓDIGO ---
+  // --- LÓGICA DE PERMISOS INTEGRADA ---
   Future<void> _initPermissions() async {
-    // Llamamos a tu clase estática AppPermissions
+    // 1. Llamamos a tu clase personalizada y esperamos (await)
+    // Esto pausará la ejecución hasta que el usuario responda el diálogo del sistema
     bool granted = await AppPermissions.requestMedia();
     
+    // 2. Si por alguna razón la lógica manual falla, usamos el backup de la librería
     if (!granted) {
-      // Si el usuario denegó, intentamos una vez más con el método legacy por si acaso
       await _audioQuery.permissionsRequest();
     }
-    setState(() {});
+
+    // 3. Una vez resuelto el permiso, actualizamos la UI.
+    // Al hacer setState, el FutureBuilder de abajo se reconstruye y
+    // ejecuta _audioQuery.querySongs(), que ahora SÍ tendrá permiso para leer.
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _playRandomMix() async {
@@ -381,11 +393,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMusicList() {
     return FutureBuilder<List<SongModel>>(
+      // Este future se ejecutará cada vez que hagamos setState.
+      // Gracias a _initPermissions, cuando llegue aquí ya deberíamos tener acceso.
       future: _audioQuery.querySongs(sortType: SongSortType.DATE_ADDED, orderType: OrderType.DESC_OR_GREATER, uriType: UriType.EXTERNAL, ignoreCase: true),
       builder: (context, item) {
         if (item.data == null) return const Center(child: CircularProgressIndicator());
+        
         var list = item.data!;
+        // Filtro de seguridad: ignorar audios de menos de 10 segundos
         list = list.where((s) => s.duration != null && s.duration! > 10000).toList();
+        
+        if (list.isEmpty) return const Center(child: Text("No se encontraron canciones.\nVerifica que diste permiso.", textAlign: TextAlign.center));
+
         return ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -560,7 +579,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       widget.audioPlayer.play();
     } catch (e) { 
       debugPrint("Error playback: $e");
-      // Fallback de emergencia
+      // Fallback de emergencia por si content:// falla
       try {
          if (widget.initialQueue[widget.initialIndex].uri != null) {
             await widget.audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(widget.initialQueue[widget.initialIndex].uri!)));
