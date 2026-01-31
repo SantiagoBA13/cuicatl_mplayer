@@ -1,6 +1,6 @@
 import 'dart:ui';
 import 'dart:math';
-import 'dart:typed_data';
+import 'dart:io'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:android_intent_plus/android_intent.dart';
+import 'package:device_info_plus/device_info_plus.dart'; // NECESARIO PARA ANDROID 14
 
 // --- PUNTO DE ENTRADA ---
 Future<void> main() async {
@@ -21,8 +22,6 @@ Future<void> main() async {
       androidNotificationChannelId: 'com.cuicatl.audio',
       androidNotificationChannelName: 'Cuicatl Playback',
       androidNotificationOngoing: true,
-      // Icono de notificación predeterminado (si existe en assets, si no usa launcher)
-      notificationColor: const Color(0xFF8B5CF6),
     );
   } catch (e) {
     debugPrint("Background init error: $e");
@@ -95,16 +94,13 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
             animation: _controller,
             builder: (context, _) {
               return Positioned(
-                top: -100 + (_controller.value * 60),
+                top: -50 + (_controller.value * 60),
                 left: -80 + (_controller.value * 40),
                 child: Container(
                   width: 500, height: 500,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [const Color(0xFF4C1D95).withOpacity(0.5), Colors.transparent], 
-                      radius: 0.6
-                    ),
+                    gradient: RadialGradient(colors: [const Color(0xFF4C1D95).withOpacity(0.5), Colors.transparent], radius: 0.6),
                   ),
                 ),
               );
@@ -120,10 +116,7 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
                   width: 500, height: 500,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [const Color(0xFFBE123C).withOpacity(0.4), Colors.transparent], 
-                      radius: 0.6
-                    ),
+                    gradient: RadialGradient(colors: [const Color(0xFFBE123C).withOpacity(0.4), Colors.transparent], radius: 0.6),
                   ),
                 ),
               );
@@ -140,7 +133,6 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
   }
 }
 
-// --- GESTIÓN DE INICIO ---
 class RootHandler extends StatefulWidget {
   const RootHandler({super.key});
   @override
@@ -204,7 +196,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-// --- NAVEGACIÓN ---
 class MainNavigationController extends StatefulWidget {
   const MainNavigationController({super.key});
   @override
@@ -289,7 +280,6 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   }
 }
 
-// --- HOME SCREEN ---
 class HomeScreen extends StatefulWidget {
   final AudioPlayer audioPlayer;
   final Function(List<SongModel>, int) onPlayRequest;
@@ -307,7 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadName();
-    _requestPermissions(); 
+    _checkPermission(); 
   }
 
   Future<void> _loadName() async {
@@ -315,15 +305,32 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _userName = prefs.getString('userName') ?? "Usuario");
   }
 
-  // --- PERMISOS ANDROID 13/14 ---
-  void _requestPermissions() async {
-    // Pedimos permisos específicos de Audio y Notificaciones
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.audio,
-      Permission.storage, // Fallback para Android viejos
-      Permission.notification, // Vital para el reproductor en barra
-    ].request();
+  // --- SOLUCIÓN DE PERMISOS EXACTA PARA ANDROID 13/14 ---
+  Future<void> _checkPermission() async {
+    bool permissionStatus = false;
     
+    // Verificamos la versión de Android
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+        // Android 13 o superior: Permiso de AUDIO y FOTOS
+        Map<Permission, PermissionStatus> statuses = await [
+          Permission.audio,
+          Permission.photos, // A veces necesario para carátulas
+          Permission.notification
+        ].request();
+        permissionStatus = statuses[Permission.audio] == PermissionStatus.granted;
+      } else {
+        // Android 12 o inferior: Permiso de STORAGE clásico
+        var status = await Permission.storage.request();
+        permissionStatus = status.isGranted;
+      }
+    }
+
+    if (!permissionStatus) {
+      // Reintentar con la librería interna si falló lo manual
+      await _audioQuery.permissionsRequest();
+    }
     setState(() {});
   }
 
@@ -390,9 +397,9 @@ class _HomeScreenState extends State<HomeScreen> {
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
             children: [
-              _buildCard("Music for Your Mood", "Soundtracks para cada\nuno de tus momentos.", const Color(0xFF34D399), const Color(0xFF059669), Icons.shuffle, _playRandomMix),
+              _buildCard("Mix Aleatorio", "Sorpresa para tu\nestado de ánimo.", const Color(0xFF34D399), const Color(0xFF059669), Icons.shuffle, _playRandomMix),
               const SizedBox(width: 15),
-              _buildCard("Energy Boost", "Música para entrenar\no despertar.", const Color(0xFFF97316), const Color(0xFFC2410C), Icons.flash_on, _playRandomMix),
+              _buildCard("Novedades", "Lo más nuevo\nen tu biblioteca.", const Color(0xFFF97316), const Color(0xFFC2410C), Icons.flash_on, _playRandomMix),
               const SizedBox(width: 15),
               _buildCard("Chill Mode", "Relájate y desconecta\ncon sonidos suaves.", const Color(0xFFA855F7), const Color(0xFF7E22CE), Icons.nightlight_round, _playRandomMix),
             ],
@@ -417,6 +424,9 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, item) {
         if (item.data == null) return const Center(child: CircularProgressIndicator());
         var list = item.data!;
+        // Filtramos archivos muy pequeños o corruptos
+        list = list.where((s) => s.duration != null && s.duration! > 10000).toList();
+        
         if (limit != null) list = list.take(limit).toList();
 
         return ListView.builder(
@@ -430,7 +440,7 @@ class _HomeScreenState extends State<HomeScreen> {
               title: Text(list[index].title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(list[index].artist ?? "Desconocido", style: const TextStyle(fontSize: 12, color: Colors.white54)),
               trailing: const Icon(Icons.play_circle_outline, color: Color(0xFF8B5CF6)),
-              onTap: () => widget.onPlayRequest(item.data!, item.data!.indexOf(list[index])),
+              onTap: () => widget.onPlayRequest(list, index), // Pasamos la lista filtrada
             );
           },
         );
@@ -498,7 +508,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- FAVORITOS ---
 class FavoritesScreen extends StatefulWidget {
   final AudioPlayer audioPlayer;
   final Function(List<SongModel>, int) onPlayRequest;
@@ -546,7 +555,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   }
 }
 
-// --- CONFIGURACIÓN ---
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
   void _openSystemEQ() { try { const AndroidIntent(action: 'android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL').launch(); } catch (e) {} }
@@ -564,7 +572,6 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-// --- REPRODUCTOR (ANDROID 14 AUDIO FIX) ---
 class PlayerScreen extends StatefulWidget {
   final List<SongModel> initialQueue;
   final int initialIndex;
@@ -609,15 +616,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // --- SOLUCIÓN DE REPRODUCCIÓN ---
-  // Construye la URI content:// que Android 13/14 necesita.
+  // --- SOLUCIÓN CRÍTICA: CONTENT URI Y MANEJO DE ERRORES ---
   Future<void> _initPlaylist() async {
     try {
       final playlist = ConcatenatingAudioSource(
         children: widget.initialQueue.map((song) {
-          
-          // FORZAMOS LA URI CONTENT:// 
-          // Esto soluciona el "no se escucha" en Android 13/14
+          // ANDROID 14 REQUIERE ESTE FORMATO DE URI
           Uri audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
           
           return AudioSource.uri(
@@ -626,7 +630,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               id: song.id.toString(),
               title: song.title,
               artist: song.artist ?? "Desconocido",
-              artUri: null, // Evitamos crash en notificación si no hay arte
+              artUri: null, 
             ),
           );
         }).toList(),
@@ -634,8 +638,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await widget.audioPlayer.setAudioSource(playlist, initialIndex: widget.initialIndex);
       widget.audioPlayer.play();
     } catch (e) { 
-      debugPrint("Playback Error: $e");
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error al reproducir. Revisa formato de archivo.")));
+      // Depuración detallada en pantalla
+      String errorMsg = "Error: $e";
+      if (e.toString().contains("403")) errorMsg = "Sin permiso. Ve a Ajustes > Apps > Cuicatl y permite Audio.";
+      if (e.toString().contains("Source error")) errorMsg = "Archivo no encontrado o dañado.";
+      
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(errorMsg), 
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ));
+      }
     }
   }
 
@@ -673,32 +687,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
       backgroundColor: Colors.transparent, 
       body: Stack(
         children: [
-          // Fondo Adaptativo + Blur
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 800),
-            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_adaptiveBackground.withOpacity(0.8), Colors.black]))
-          ),
+          AnimatedContainer(duration: const Duration(milliseconds: 800), decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_adaptiveBackground.withOpacity(0.8), Colors.black]))),
           Positioned.fill(child: Opacity(opacity: 0.3, child: QueryArtworkWidget(id: currentSong.id, type: ArtworkType.AUDIO, artworkHeight: double.infinity, artworkWidth: double.infinity, size: 1000, artworkFit: BoxFit.cover, nullArtworkWidget: const SizedBox()))),
           BackdropFilter(filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40), child: Container(color: Colors.transparent)),
           
           SafeArea(
             child: Column(
               children: [
-                // Header Glass
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _glassBtn(Icons.keyboard_arrow_down, () => Navigator.pop(context)),
-                      _glassBtn(Icons.ios_share, () {}),
-                    ],
-                  ),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: () => Navigator.pop(context)),
+                    IconButton(icon: const Icon(Icons.ios_share), onPressed: () {}),
+                  ]),
                 ),
-                
                 const Spacer(),
                 
-                // Carrusel
                 SizedBox(
                   height: 340,
                   child: PageView.builder(
@@ -717,11 +721,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const SizedBox(height: 30),
                 
-                // Info + Favorito
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 30),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -734,10 +736,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ],
                   ),
                 ),
-                
                 const SizedBox(height: 20),
                 
-                // WAVEFORM + TIEMPO
                 StreamBuilder<Duration>(
                   stream: widget.audioPlayer.positionStream,
                   builder: (context, snapshot) {
@@ -764,7 +764,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
 
                 const SizedBox(height: 10),
-                // CONTROLES
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
@@ -777,7 +776,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const Spacer(),
                 
-                // LETRAS (LYRICS)
                 DraggableScrollableSheet(
                   initialChildSize: 0.08, minChildSize: 0.08, maxChildSize: 0.6,
                   builder: (context, scrollController) {
@@ -814,7 +812,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 }
 
-// --- WIDGET ESPECTRO ---
 class WaveformSlider extends StatelessWidget {
   final Duration position;
   final Duration duration;
@@ -857,7 +854,6 @@ class WaveformSlider extends StatelessWidget {
   }
 }
 
-// --- BUSCADOR ---
 class SongSearchDelegate extends SearchDelegate {
   final OnAudioQuery audioQuery;
   final Function(List<SongModel>, int) onPlay;
