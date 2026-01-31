@@ -1,7 +1,7 @@
 name: cuicatl_mplayer
-description: Reproductor de música Cuicatl Ultimate.
+description: Reproductor Cuicatl Ultimate.
 publish_to: 'none'
-version: 4.0.0+1
+version: 5.0.0+1
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -12,14 +12,13 @@ dependencies:
   cupertino_icons: ^1.0.6
   google_fonts: ^6.1.0
   just_audio: ^0.9.36
-  # ESTA ES LA NUEVA PARA NOTIFICACIONES
   just_audio_background: ^0.0.1-beta.11
   on_audio_query: ^2.9.0
   permission_handler: ^11.2.0
   shared_preferences: ^2.2.2
   palette_generator: ^0.3.3
-  # Para abrir el Ecualizador del sistema
-  android_intent_plus: ^4.0.0
+  # NUEVO: Ecualizador integrado
+  equalizer_flutter: ^0.0.3
 
 dev_dependencies:
   flutter_test:
