@@ -20,22 +20,22 @@ jobs:
       - name: Generar estructura Android
         run: flutter create . --project-name cuicatl_mplayer --org com.cuicatl
 
-      # --- INYECCIÓN DEL MANIFIESTO (MODO ANDROID 14) ---
-      - name: Configurar Manifiesto Android
+      # --- REPARACIÓN DEL MANIFIESTO (ANDROID 14) ---
+      - name: Inyectar Permisos y Servicios
         run: |
-          # 1. Definir permisos requeridos para Android 13/14
+          # 1. Definir los permisos necesarios (Audio y Notificaciones)
           PERMISOS='<uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/><uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>'
           
-          # 2. Definir el Servicio de Notificación (Just Audio Background)
+          # 2. Definir el servicio de audio en segundo plano
           SERVICIO='<service android:name="com.ryanheise.just_audio_background.AudioService" android:foregroundServiceType="mediaPlayback" android:exported="true" android:permission="android.permission.BIND_FOREGROUND_SERVICE_MEDIA_PLAYBACK"><intent-filter><action android:name="android.media.browse.MediaBrowserService"/></intent-filter></service>'
           
-          # 3. Inyectar Permisos antes de <application>
+          # 3. Insertar permisos antes de la etiqueta <application>
           sed -i "s|<application|$PERMISOS<application|g" android/app/src/main/AndroidManifest.xml
           
-          # 4. Inyectar Servicio antes de cerrar </application>
+          # 4. Insertar el servicio antes de cerrar la etiqueta </application>
           sed -i "s|</application>|$SERVICIO</application>|g" android/app/src/main/AndroidManifest.xml
           
-          # 5. Ajustar el nombre de la actividad principal
+          # 5. Asegurar que el nombre de la app sea correcto
           sed -i 's/android:name="io.flutter.app.FlutterApplication"/android:name="${applicationName}"/g' android/app/src/main/AndroidManifest.xml
 
       - name: Instalar dependencias
@@ -45,5 +45,5 @@ jobs:
       - name: Subir APK
         uses: actions/upload-artifact@v4
         with:
-          name: cuicatl-app-v10-android14
+          name: cuicatl-app-v9-repaired
           path: build/app/outputs/flutter-apk/app-release.apk
