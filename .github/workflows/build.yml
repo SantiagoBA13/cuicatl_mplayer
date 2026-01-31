@@ -20,17 +20,23 @@ jobs:
       - name: Generar estructura Android
         run: flutter create . --project-name cuicatl_mplayer --org com.cuicatl
 
-      # --- INYECCIÓN DE PERMISOS ANDROID 14 ---
-      - name: Inyectar Manifiesto Android
+      # --- INYECCIÓN DEL MANIFIESTO (MODO ANDROID 14) ---
+      - name: Configurar Manifiesto Android
         run: |
-          # 1. Inyectar permisos y atributo requestLegacyExternalStorage para máxima compatibilidad
-          sed -i 's/<application/<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"\/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"\/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"\/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"\/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"\/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"\/>\n    <application android:requestLegacyExternalStorage="true"/g' android/app/src/main/AndroidManifest.xml
+          # 1. Definir permisos requeridos para Android 13/14
+          PERMISOS='<uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/><uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>'
           
-          # 2. Corregir nombre de actividad
-          sed -i 's/android:name="io.flutter.app.FlutterApplication"/android:name="\$\{applicationName\}"/g' android/app/src/main/AndroidManifest.xml
+          # 2. Definir el Servicio de Notificación (Just Audio Background)
+          SERVICIO='<service android:name="com.ryanheise.just_audio_background.AudioService" android:foregroundServiceType="mediaPlayback" android:exported="true" android:permission="android.permission.BIND_FOREGROUND_SERVICE_MEDIA_PLAYBACK"><intent-filter><action android:name="android.media.browse.MediaBrowserService"/></intent-filter></service>'
           
-          # 3. Servicio de Audio Background
-          sed -i 's/<\/application>/<service android:name="com.ryanheise.just_audio_background.AudioService" android:foregroundServiceType="mediaPlayback" android:exported="true" android:permission="android.permission.BIND_FOREGROUND_SERVICE_MEDIA_PLAYBACK"><intent-filter><action android:name="android.media.browse.MediaBrowserService" \/><\/intent-filter><\/service><\/application>/g' android/app/src/main/AndroidManifest.xml
+          # 3. Inyectar Permisos antes de <application>
+          sed -i "s|<application|$PERMISOS<application|g" android/app/src/main/AndroidManifest.xml
+          
+          # 4. Inyectar Servicio antes de cerrar </application>
+          sed -i "s|</application>|$SERVICIO</application>|g" android/app/src/main/AndroidManifest.xml
+          
+          # 5. Ajustar el nombre de la actividad principal
+          sed -i 's/android:name="io.flutter.app.FlutterApplication"/android:name="${applicationName}"/g' android/app/src/main/AndroidManifest.xml
 
       - name: Instalar dependencias
         run: flutter pub get
@@ -39,5 +45,5 @@ jobs:
       - name: Subir APK
         uses: actions/upload-artifact@v4
         with:
-          name: cuicatl-app-v9-fix
+          name: cuicatl-app-v10-android14
           path: build/app/outputs/flutter-apk/app-release.apk
