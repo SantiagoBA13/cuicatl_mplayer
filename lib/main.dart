@@ -10,7 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
-import 'package:android_intent_plus/android_intent.dart'; // Solo Intent, sin equalizer_flutter
+import 'package:android_intent_plus/android_intent.dart';
 
 // --- PUNTO DE ENTRADA ---
 Future<void> main() async {
@@ -379,18 +379,26 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Especial para ti", style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold))),
         const SizedBox(height: 15),
+        
+        // CARRUSEL DE TARJETAS (CORREGIDO)
         SizedBox(
           height: 180,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
             children: [
-              _buildCard("Mix Aleatorio", const Color(0xFF34D399), const Color(0xFF059669), Icons.shuffle, _playRandomMix),
+              // 1. VERDE: MOOD MIX
+              _buildCard("Music for Your Mood", "Soundtracks para cada\nuno de tus momentos.", const Color(0xFF34D399), const Color(0xFF059669), Icons.shuffle, _playRandomMix),
               const SizedBox(width: 15),
-              _buildCard("Novedades", const Color(0xFFF97316), const Color(0xFFC2410C), Icons.new_releases, _playRandomMix),
+              // 2. NARANJA: ENERGY
+              _buildCard("Energy Boost", "Música para entrenar\no despertar.", const Color(0xFFF97316), const Color(0xFFC2410C), Icons.flash_on, _playRandomMix),
+              const SizedBox(width: 15),
+              // 3. MORADO: CHILL
+              _buildCard("Chill Mode", "Relájate y desconecta\ncon sonidos suaves.", const Color(0xFFA855F7), const Color(0xFF7E22CE), Icons.nightlight_round, _playRandomMix),
             ],
           ),
         ),
+
         const SizedBox(height: 25),
         Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Todas las canciones", style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold))),
         const SizedBox(height: 10),
@@ -408,8 +416,6 @@ class _HomeScreenState extends State<HomeScreen> {
       future: _audioQuery.querySongs(sortType: SongSortType.DATE_ADDED, orderType: OrderType.DESC_OR_GREATER, uriType: UriType.EXTERNAL, ignoreCase: true),
       builder: (context, item) {
         if (item.data == null) return const Center(child: CircularProgressIndicator());
-        if (item.data!.isEmpty) return const Center(child: Text("No se encontraron canciones.", textAlign: TextAlign.center));
-        
         var list = item.data!;
         if (limit != null) list = list.take(limit).toList();
 
@@ -462,13 +468,12 @@ class _HomeScreenState extends State<HomeScreen> {
           title: const Text("Crear Nueva Playlist", style: TextStyle(fontWeight: FontWeight.bold)),
           onTap: () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Creando Playlist..."))); },
         ),
-        const Divider(color: Colors.white24),
-        const ListTile(leading: Icon(Icons.queue_music), title: Text("Favoritos"), subtitle: Text("Automática")),
       ],
     );
   }
 
-  Widget _buildCard(String title, Color c1, Color c2, IconData icon, VoidCallback onTap) {
+  // --- TARJETAS MEJORADAS (DISEÑO RESTAURADO) ---
+  Widget _buildCard(String title, String subtitle, Color c1, Color c2, IconData icon, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -478,12 +483,30 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Positioned(right: -20, bottom: -30, child: Icon(icon, size: 150, color: Colors.black.withOpacity(0.1))),
             Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-                Text(title, style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                const SizedBox(height: 5),
-                const Text("Selección especial basada\nen tu biblioteca.", style: TextStyle(fontSize: 12, color: Colors.white70)),
-              ]),
+              padding: const EdgeInsets.all(25),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(title, style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                  const SizedBox(height: 8),
+                  Text(subtitle, style: const TextStyle(fontSize: 13, color: Colors.white70)),
+                  const SizedBox(height: 20),
+                  // Botón "Check Out" / Reproducir
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(20)),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text("Reproducir", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
+                        SizedBox(width: 5),
+                        Icon(Icons.play_arrow, size: 14, color: Colors.white)
+                      ]
+                    )
+                  )
+                ],
+              ),
             )
           ],
         ),
@@ -549,30 +572,10 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 }
 
 // --- CONFIGURACIÓN ---
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
-  @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  bool _hqAudio = false;
-  bool _crossfade = false;
-  bool _amoled = false;
-
-  @override
-  void initState() { super.initState(); _loadSettings(); }
-  Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() { _hqAudio = prefs.getBool('hqAudio') ?? false; _crossfade = prefs.getBool('crossfade') ?? false; _amoled = prefs.getBool('amoled') ?? false; });
-  }
-  Future<void> _saveSetting(String key, bool value) async {
-    final prefs = await SharedPreferences.getInstance(); await prefs.setBool(key, value);
-    setState(() { if(key == 'hqAudio') _hqAudio = value; if(key == 'crossfade') _crossfade = value; if(key == 'amoled') _amoled = value; });
-  }
   
-  // FUNCIÓN SEGURA EQ SISTEMA
-  void _openSystemEQ() {
+  void _openSystemEQ(BuildContext context) {
     try {
       const intent = AndroidIntent(
         action: 'android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL',
@@ -592,18 +595,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const Text("CONFIGURACIÓN", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
         const SizedBox(height: 20),
         const Text("AUDIO PRO", style: TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold)),
-        SwitchListTile(value: _hqAudio, onChanged: (v) => _saveSetting('hqAudio', v), title: const Text("Forzar Alta Calidad"), subtitle: const Text("Intenta usar drivers Hi-Res"), activeColor: const Color(0xFF8B5CF6)),
-        SwitchListTile(value: _crossfade, onChanged: (v) => _saveSetting('crossfade', v), title: const Text("Crossfade"), subtitle: const Text("Mezcla suave entre canciones"), activeColor: const Color(0xFF8B5CF6)),
+        SwitchListTile(value: true, onChanged: (v){}, title: const Text("Forzar Alta Calidad"), subtitle: const Text("Intenta usar drivers Hi-Res"), activeColor: const Color(0xFF8B5CF6)),
         ListTile(
           leading: const Icon(Icons.graphic_eq, color: Color(0xFFEC4899), size: 30),
           title: const Text("Ecualizador del Sistema"),
           subtitle: const Text("Abrir Dolby/Android EQ"),
           trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: _openSystemEQ, 
+          onTap: () => _openSystemEQ(context), 
         ),
-        const Divider(color: Colors.white12),
-        const Text("APARIENCIA", style: TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.bold)),
-        SwitchListTile(value: _amoled, onChanged: (v) => _saveSetting('amoled', v), title: const Text("Tema AMOLED Puro"), activeColor: const Color(0xFF8B5CF6)),
         const Divider(color: Colors.white12),
         ListTile(leading: const Icon(Icons.logout, color: Colors.redAccent), title: const Text("Restablecer Usuario"), onTap: () async {
           final prefs = await SharedPreferences.getInstance(); prefs.remove('userName');
@@ -663,12 +662,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     try {
       final playlist = ConcatenatingAudioSource(
         children: widget.initialQueue.map((song) {
+          Uri audioUri = Uri.parse(song.uri!);
+          if (song.uri == null || song.uri!.isEmpty) {
+             audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
+          }
           return AudioSource.uri(
-            Uri.parse(song.uri!),
+            audioUri,
             tag: MediaItem(
               id: song.id.toString(),
               title: song.title,
               artist: song.artist ?? "Desconocido",
+              artUri: null, 
             ),
           );
         }).toList(),
@@ -684,12 +688,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       Uint8List? artworkBytes = await OnAudioQuery().queryArtwork(song.id, ArtworkType.AUDIO, size: 500);
       if (artworkBytes != null) {
         final PaletteGenerator palette = await PaletteGenerator.fromImageProvider(MemoryImage(artworkBytes));
-        if (mounted) {
-          setState(() {
-            _adaptiveColor = palette.dominantColor?.color ?? const Color(0xFF8B5CF6);
-            _adaptiveBackground = palette.darkMutedColor?.color ?? const Color(0xFF0F0F1E);
-          });
-        }
+        if (mounted) setState(() { _adaptiveColor = palette.dominantColor?.color ?? const Color(0xFF8B5CF6); _adaptiveBackground = palette.darkMutedColor?.color ?? const Color(0xFF0F0F1E); });
       }
     } catch (e) { debugPrint("Error palette: $e"); }
   }
@@ -709,22 +708,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
     else { favs.add(id); setState(() => _isFav = true); }
     await prefs.setStringList('favorites', favs);
   }
-  
-  // FUNCIONES DE 3 PUNTOS
-  void _showTimerDialog() {
-    showDialog(context: context, builder: (_) => AlertDialog(
-      backgroundColor: const Color(0xFF1E1E2C),
-      title: const Text("Temporizador"),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-         ListTile(title: const Text("15 Minutos"), onTap: (){ Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Se detendrá en 15 min"))); }),
-         ListTile(title: const Text("30 Minutos"), onTap: (){ Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Se detendrá en 30 min"))); }),
-      ]),
-    ));
-  }
-  
-  void _openEQ() {
-    try { const AndroidIntent(action: 'android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL').launch(); } catch(e){}
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -733,7 +716,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       backgroundColor: Colors.transparent, 
       body: Stack(
         children: [
-          // Fondo de color adaptativo + Blur
+          // Fondo Adaptativo
           AnimatedContainer(
             duration: const Duration(milliseconds: 800),
             decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_adaptiveBackground.withOpacity(0.8), Colors.black]))
@@ -744,21 +727,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           SafeArea(
             child: Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: () => Navigator.pop(context)),
-                      PopupMenuButton<String>(
-                        icon: const Icon(Icons.more_vert),
-                        color: const Color(0xFF1E1E2C),
-                        onSelected: (v) { if (v == 'timer') _showTimerDialog(); if (v == 'eq') _openEQ(); },
-                        itemBuilder: (c) => [const PopupMenuItem(value: 'timer', child: Text("Temporizador 🌙")), const PopupMenuItem(value: 'eq', child: Text("Ecualizador 🎚️"))],
-                      ),
-                    ],
-                  ),
-                ),
+                AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: () => Navigator.pop(context))),
                 const Spacer(),
                 SizedBox(
                   height: 320,
@@ -791,7 +760,35 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 30),
+                const SizedBox(height: 20),
+                
+                // ESPECTRO DE AUDIO
+                StreamBuilder<Duration>(
+                  stream: widget.audioPlayer.positionStream,
+                  builder: (context, snapshot) {
+                    final position = snapshot.data ?? Duration.zero;
+                    return StreamBuilder<Duration?>(
+                      stream: widget.audioPlayer.durationStream,
+                      builder: (context, snapshotDur) {
+                        final duration = snapshotDur.data ?? Duration.zero;
+                        return Column(
+                          children: [
+                            WaveformSlider(position: position, duration: duration, color: _adaptiveColor, onSeek: (p) => widget.audioPlayer.seek(p)),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+                              child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                Text("${position.inMinutes}:${(position.inSeconds % 60).toString().padLeft(2, '0')}", style: const TextStyle(fontSize: 12, color: Colors.white60)),
+                                Text("${duration.inMinutes}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}", style: const TextStyle(fontSize: 12, color: Colors.white60)),
+                              ]),
+                            )
+                          ],
+                        );
+                      }
+                    );
+                  }
+                ),
+
+                const SizedBox(height: 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -805,12 +802,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ],
                 ),
                 const Spacer(),
+                
+                // LETRAS
                 DraggableScrollableSheet(
-                  initialChildSize: 0.03, minChildSize: 0.03, maxChildSize: 0.6,
+                  initialChildSize: 0.08, minChildSize: 0.08, maxChildSize: 0.6,
                   builder: (context, scrollController) {
                     return Container(
-                      decoration: const BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
-                      child: SingleChildScrollView(controller: scrollController, child: const Column(children: [SizedBox(height: 10), Icon(Icons.keyboard_arrow_up), Text("LETRAS", style: TextStyle(letterSpacing: 2)), SizedBox(height: 500, child: Center(child: Text("Busca letras...")))])),
+                      decoration: const BoxDecoration(color: Color(0xFF1E1E2C), borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+                      child: SingleChildScrollView(
+                        controller: scrollController,
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 15),
+                            const Icon(Icons.keyboard_arrow_up, color: Colors.white54),
+                            const Text("LETRAS", style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 30),
+                            Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Text("Funcionalidad en desarrollo\n(Leer ID3 tags)", textAlign: TextAlign.center, style: GoogleFonts.outfit(fontSize: 16, color: Colors.white54)),
+                            )
+                          ],
+                        ),
+                      ),
                     );
                   }
                 ),
@@ -818,6 +831,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// --- WIDGET ESPECTRO ---
+class WaveformSlider extends StatelessWidget {
+  final Duration position;
+  final Duration duration;
+  final Function(Duration) onSeek;
+  final Color color;
+
+  const WaveformSlider({super.key, required this.position, required this.duration, required this.onSeek, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    const int barCount = 35; 
+    final double percentage = duration.inMilliseconds == 0 ? 0 : position.inMilliseconds / duration.inMilliseconds;
+    return GestureDetector(
+      onHorizontalDragUpdate: (details) {
+        final box = context.findRenderObject() as RenderBox;
+        final p = (box.globalToLocal(details.globalPosition).dx / box.size.width).clamp(0.0, 1.0);
+        onSeek(Duration(milliseconds: (duration.inMilliseconds * p).round()));
+      },
+      onTapUp: (details) {
+        final box = context.findRenderObject() as RenderBox;
+        final p = (box.globalToLocal(details.globalPosition).dx / box.size.width).clamp(0.0, 1.0);
+        onSeek(Duration(milliseconds: (duration.inMilliseconds * p).round()));
+      },
+      child: Container(
+        height: 50, width: double.infinity, color: Colors.transparent, padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween, crossAxisAlignment: CrossAxisAlignment.center,
+          children: List.generate(barCount, (index) {
+            final double waveHeight = 10 + (15 * sin(index * 0.5).abs()) + (Random(index).nextInt(10).toDouble());
+            final bool isActive = index / barCount <= percentage;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 4, height: isActive ? waveHeight + 5 : waveHeight,
+              decoration: BoxDecoration(color: isActive ? color : Colors.white24, borderRadius: BorderRadius.circular(5), boxShadow: isActive ? [BoxShadow(color: color.withOpacity(0.5), blurRadius: 5)] : null),
+            );
+          }),
+        ),
       ),
     );
   }
