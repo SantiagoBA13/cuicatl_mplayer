@@ -1,6 +1,5 @@
 import 'dart:ui';
 import 'dart:math';
-import 'dart:io'; 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
@@ -11,20 +10,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:android_intent_plus/android_intent.dart';
-import 'package:device_info_plus/device_info_plus.dart'; // NECESARIO PARA ANDROID 14
+import 'package:device_info_plus/device_info_plus.dart';
 
-// --- PUNTO DE ENTRADA ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // INTENTO ROBUSTO DE INICIAR SERVICIO
   try {
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.cuicatl.audio',
       androidNotificationChannelName: 'Cuicatl Playback',
       androidNotificationOngoing: true,
+      notificationColor: const Color(0xFF8B5CF6),
     );
   } catch (e) {
-    debugPrint("Background init error: $e");
+    debugPrint("⚠️ Error crítico en Background Service: $e");
+    // No detenemos la app, pero el usuario no tendrá notificaciones
   }
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -291,8 +292,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final OnAudioQuery _audioQuery = OnAudioQuery();
   String _userName = "Usuario";
-  int _selectedTab = 0;
-
+  
   @override
   void initState() {
     super.initState();
@@ -305,31 +305,18 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _userName = prefs.getString('userName') ?? "Usuario");
   }
 
-  // --- SOLUCIÓN DE PERMISOS EXACTA PARA ANDROID 13/14 ---
+  // --- PERMISOS ANDROID 14 ---
   Future<void> _checkPermission() async {
-    bool permissionStatus = false;
+    // 1. Pedir permisos usando permission_handler (es más robusto para Android 14)
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.audio,
+      Permission.storage, 
+      Permission.notification
+    ].request();
     
-    // Verificamos la versión de Android
-    if (Platform.isAndroid) {
-      final androidInfo = await DeviceInfoPlugin().androidInfo;
-      if (androidInfo.version.sdkInt >= 33) {
-        // Android 13 o superior: Permiso de AUDIO y FOTOS
-        Map<Permission, PermissionStatus> statuses = await [
-          Permission.audio,
-          Permission.photos, // A veces necesario para carátulas
-          Permission.notification
-        ].request();
-        permissionStatus = statuses[Permission.audio] == PermissionStatus.granted;
-      } else {
-        // Android 12 o inferior: Permiso de STORAGE clásico
-        var status = await Permission.storage.request();
-        permissionStatus = status.isGranted;
-      }
-    }
-
-    if (!permissionStatus) {
-      // Reintentar con la librería interna si falló lo manual
-      await _audioQuery.permissionsRequest();
+    // 2. Si falla, intentar el método legacy de audio_query
+    if (statuses[Permission.audio] != PermissionStatus.granted) {
+       await _audioQuery.permissionsRequest();
     }
     setState(() {});
   }
@@ -360,28 +347,16 @@ class _HomeScreenState extends State<HomeScreen> {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(children: [_buildPill(_userName, 0), _buildPill("Música", 1), _buildPill("Artistas", 2), _buildPill("Playlists", 3)]),
+          child: Row(children: [_buildPill("Música", 0), _buildPill("Artistas", 1), _buildPill("Playlists", 2)]),
         ),
         const SizedBox(height: 20),
-        Expanded(child: _buildBodyContent()),
+        Expanded(child: _buildHomeTab()),
       ],
     );
   }
 
   Widget _buildPill(String text, int index) {
-    bool isSelected = _selectedTab == index;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedTab = index),
-      child: Container(margin: const EdgeInsets.only(right: 12), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10), decoration: BoxDecoration(color: isSelected ? const Color(0xFF8B5CF6) : Colors.white10, borderRadius: BorderRadius.circular(30)), child: Text(text, style: GoogleFonts.outfit(color: isSelected ? Colors.white : Colors.white60, fontWeight: FontWeight.bold))),
-    );
-  }
-
-  Widget _buildBodyContent() {
-    if (_selectedTab == 0) return _buildHomeTab();
-    if (_selectedTab == 1) return _buildMusicTab();
-    if (_selectedTab == 2) return _buildArtistsTab();
-    if (_selectedTab == 3) return _buildPlaylistsTab();
-    return Container();
+    return Container(margin: const EdgeInsets.only(right: 12), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(30)), child: Text(text, style: GoogleFonts.outfit(color: Colors.white60, fontWeight: FontWeight.bold)));
   }
 
   Widget _buildHomeTab() {
@@ -409,30 +384,23 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 25),
         Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Todas las canciones", style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold))),
         const SizedBox(height: 10),
-        _buildMusicList(limit: 10),
+        _buildMusicList(),
       ],
     );
   }
 
-  Widget _buildMusicTab() {
-    return _buildMusicList();
-  }
-
-  Widget _buildMusicList({int? limit}) {
+  Widget _buildMusicList() {
     return FutureBuilder<List<SongModel>>(
       future: _audioQuery.querySongs(sortType: SongSortType.DATE_ADDED, orderType: OrderType.DESC_OR_GREATER, uriType: UriType.EXTERNAL, ignoreCase: true),
       builder: (context, item) {
         if (item.data == null) return const Center(child: CircularProgressIndicator());
         var list = item.data!;
-        // Filtramos archivos muy pequeños o corruptos
+        // Filtro de seguridad para archivos corruptos
         list = list.where((s) => s.duration != null && s.duration! > 10000).toList();
         
-        if (limit != null) list = list.take(limit).toList();
-
         return ListView.builder(
-          shrinkWrap: limit != null,
-          physics: limit != null ? const NeverScrollableScrollPhysics() : null,
-          padding: const EdgeInsets.only(bottom: 120),
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
           itemCount: list.length,
           itemBuilder: (context, index) {
             return ListTile(
@@ -440,45 +408,11 @@ class _HomeScreenState extends State<HomeScreen> {
               title: Text(list[index].title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
               subtitle: Text(list[index].artist ?? "Desconocido", style: const TextStyle(fontSize: 12, color: Colors.white54)),
               trailing: const Icon(Icons.play_circle_outline, color: Color(0xFF8B5CF6)),
-              onTap: () => widget.onPlayRequest(list, index), // Pasamos la lista filtrada
+              onTap: () => widget.onPlayRequest(list, index),
             );
           },
         );
       },
-    );
-  }
-
-  Widget _buildArtistsTab() {
-    return FutureBuilder<List<ArtistModel>>(
-      future: _audioQuery.queryArtists(sortType: ArtistSortType.ARTIST, orderType: OrderType.ASC_OR_SMALLER),
-      builder: (context, item) {
-        if (item.data == null) return const Center(child: CircularProgressIndicator());
-        return ListView.builder(
-          padding: const EdgeInsets.only(bottom: 120), itemCount: item.data!.length,
-          itemBuilder: (context, index) => ListTile(
-            leading: const CircleAvatar(backgroundColor: Colors.white10, child: Icon(Icons.person)),
-            title: Text(item.data![index].artist, maxLines: 1),
-            subtitle: Text("${item.data![index].numberOfTracks} canciones"),
-            onTap: () async {
-                List<SongModel> songs = await _audioQuery.queryAudiosFrom(AudiosFromType.ARTIST_ID, item.data![index].id);
-                widget.onPlayRequest(songs, 0);
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildPlaylistsTab() {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        ListTile(
-          leading: Container(padding: const EdgeInsets.all(10), decoration: const BoxDecoration(color: Color(0xFF8B5CF6), shape: BoxShape.circle), child: const Icon(Icons.add, color: Colors.white)),
-          title: const Text("Crear Nueva Playlist", style: TextStyle(fontWeight: FontWeight.bold)),
-          onTap: () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Creando Playlist..."))); },
-        ),
-      ],
     );
   }
 
@@ -616,12 +550,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // --- SOLUCIÓN CRÍTICA: CONTENT URI Y MANEJO DE ERRORES ---
+  // --- SOLUCIÓN DE REPRODUCCIÓN ANDROID 14 ---
   Future<void> _initPlaylist() async {
     try {
       final playlist = ConcatenatingAudioSource(
         children: widget.initialQueue.map((song) {
-          // ANDROID 14 REQUIERE ESTE FORMATO DE URI
+          // URI Universal que Android 14 no bloquea
           Uri audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
           
           return AudioSource.uri(
@@ -638,17 +572,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await widget.audioPlayer.setAudioSource(playlist, initialIndex: widget.initialIndex);
       widget.audioPlayer.play();
     } catch (e) { 
-      // Depuración detallada en pantalla
-      String errorMsg = "Error: $e";
-      if (e.toString().contains("403")) errorMsg = "Sin permiso. Ve a Ajustes > Apps > Cuicatl y permite Audio.";
-      if (e.toString().contains("Source error")) errorMsg = "Archivo no encontrado o dañado.";
-      
-      if(mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(errorMsg), 
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 5),
-        ));
+      debugPrint("Playback Error: $e");
+      // Fallback a URI directa si content:// falla (raro, pero posible en algunos ROMs)
+      try {
+         if (widget.initialQueue[widget.initialIndex].uri != null) {
+            await widget.audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(widget.initialQueue[widget.initialIndex].uri!)));
+            widget.audioPlayer.play();
+         }
+      } catch (e2) {
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error fatal: Archivo inaccesible.")));
       }
     }
   }
