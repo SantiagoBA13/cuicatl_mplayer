@@ -238,8 +238,6 @@ class _HomeScreenState extends State<HomeScreen> {
     // Escuchar cambios de canción para el fondo dinámico del Home
     widget.audioPlayer.currentIndexStream.listen((index) {
       if (index != null && widget.audioPlayer.audioSource != null) {
-        // En una app real, aquí extraeríamos el color de la canción actual.
-        // Simulamos un cambio sutil para rendimiento.
         setState(() {
           _bgColor1 = Colors.primaries[Random().nextInt(Colors.primaries.length)].withOpacity(0.4);
         });
@@ -367,12 +365,15 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 25),
           Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Escuchado recientemente", style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold))),
           const SizedBox(height: 10),
-          // Lista reciente simulada (toma las primeras canciones)
+          
+          // --- AQUÍ ESTABA EL ERROR, CORREGIDO: ---
           FutureBuilder<List<SongModel>>(
-            future: _audioQuery.querySongs(limit: 5),
+            future: _audioQuery.querySongs(sortType: SongSortType.DATE_ADDED, orderType: OrderType.DESC_OR_GREATER), // Quitamos el limit
             builder: (context, item) {
               if (item.data == null) return const SizedBox();
-              return Column(children: item.data!.map((e) => _songTile(e, item.data!, item.data!.indexOf(e))).toList());
+              // Tomamos las primeras 5 manualmente
+              final recentSongs = item.data!.take(5).toList();
+              return Column(children: recentSongs.map((e) => _songTile(e, item.data!, item.data!.indexOf(e))).toList());
             },
           )
         ],
@@ -602,7 +603,7 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-// --- REPRODUCTOR (PLAYER) CORREGIDO Y SUBIDO ---
+// --- REPRODUCTOR (PLAYER) ---
 class PlayerScreen extends StatefulWidget {
   final List<SongModel> initialQueue;
   final int initialIndex;
