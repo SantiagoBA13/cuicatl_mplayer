@@ -1,7 +1,7 @@
 name: cuicatl_mplayer
 description: Reproductor de música Cuicatl Ultimate.
 publish_to: 'none'
-version: 6.0.0+1
+version: 8.0.0+1
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -20,13 +20,14 @@ dependencies:
   
   # Datos y Permisos
   on_audio_query: ^2.9.0
-  permission_handler: ^11.2.0
+  permission_handler: ^11.3.0
   shared_preferences: ^2.2.2
+  
+  # Detectar versión de Android (Vital para Android 13/14)
+  device_info_plus: ^10.1.0
   
   # UI y Colores
   palette_generator: ^0.3.3
-  
-  # Para abrir el Ecualizador Nativo (Estable)
   android_intent_plus: ^4.0.0
 
 dev_dependencies:
