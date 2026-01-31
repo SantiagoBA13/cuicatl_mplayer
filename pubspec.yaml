@@ -1,7 +1,7 @@
 name: cuicatl_mplayer
-description: Reproductor de música Cuicatl.
+description: Reproductor de música Cuicatl Pro.
 publish_to: 'none'
-version: 1.0.0+1
+version: 2.0.0+1
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -9,17 +9,18 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Iconos y UI
   cupertino_icons: ^1.0.6
-  # Reproducción de audio
-  just_audio: ^0.9.36
-  # Lectura de archivos y carátulas
-  on_audio_query: ^2.9.0
-  # Permisos
-  permission_handler: ^11.2.0
-  # UI
   google_fonts: ^6.1.0
-  palette_generator: ^0.3.3
-
+  # Audio
+  just_audio: ^0.9.36
+  on_audio_query: ^2.9.0
+  # Permisos y Sistema
+  permission_handler: ^11.2.0
+  shared_preferences: ^2.2.2 # Para guardar el nombre
+  # Efectos Visuales
+  ui: 
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -27,3 +28,4 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  
