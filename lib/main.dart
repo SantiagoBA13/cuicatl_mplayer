@@ -298,7 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadName();
-    _initAndroidPermissions(); // Ejecutamos la lógica corregida
+    _initAndroidPermissions(); 
   }
 
   Future<void> _loadName() async {
@@ -557,35 +557,35 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // --- REPRODUCCIÓN ANDROID 14 ROBUSTA ---
+  // --- REPRODUCCIÓN CORREGIDA (FIX) ---
   Future<void> _initPlaylist() async {
     try {
       final playlist = ConcatenatingAudioSource(
         children: widget.initialQueue.map((song) {
-          // Usamos la URI Content:// obligatoria para Android 14
-          Uri audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
+          if (song.uri == null) {
+            throw Exception("Song sin URI válida: ${song.title}");
+          }
+
           return AudioSource.uri(
-            audioUri,
+            Uri.parse(song.uri!), // ✅ USAR URI REAL (Como solicitaste)
             tag: MediaItem(
               id: song.id.toString(),
               title: song.title,
               artist: song.artist ?? "Desconocido",
-              artUri: null, 
             ),
           );
         }).toList(),
       );
-      await widget.audioPlayer.setAudioSource(playlist, initialIndex: widget.initialIndex);
-      widget.audioPlayer.play();
-    } catch (e) { 
-      debugPrint("Error playback: $e");
-      // Fallback de emergencia por si content:// falla
-      try {
-         if (widget.initialQueue[widget.initialIndex].uri != null) {
-            await widget.audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(widget.initialQueue[widget.initialIndex].uri!)));
-            widget.audioPlayer.play();
-         }
-      } catch (e2) {}
+
+      await widget.audioPlayer.setAudioSource(
+        playlist,
+        initialIndex: widget.initialIndex,
+      );
+
+      await widget.audioPlayer.play();
+    } catch (e, st) {
+      debugPrint("❌ Error iniciando playlist: $e");
+      debugPrint("$st");
     }
   }
 
@@ -639,6 +639,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const Spacer(),
                 
+                // CARÁTULA
                 SizedBox(
                   height: 340,
                   child: PageView.builder(
@@ -657,6 +658,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const SizedBox(height: 30),
                 
+                // INFO
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 30),
                   child: Row(
@@ -674,6 +676,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const SizedBox(height: 20),
                 
+                // WAVEFORM
                 StreamBuilder<Duration>(
                   stream: widget.audioPlayer.positionStream,
                   builder: (context, snapshot) {
@@ -790,7 +793,6 @@ class WaveformSlider extends StatelessWidget {
   }
 }
 
-// --- BUSCADOR MEJORADO ---
 class SongSearchDelegate extends SearchDelegate {
   final OnAudioQuery audioQuery;
   final Function(List<SongModel>, int) onPlay;
