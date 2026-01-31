@@ -1,17 +1,17 @@
 import 'dart:ui';
 import 'dart:math';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:on_audio_query/on_audio_query.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:android_intent_plus/android_intent.dart';
-import 'package:device_info_plus/device_info_plus.dart';
+
+// IMPORTAMOS TU NUEVO ARCHIVO DE PERMISOS
+import 'permissions.dart'; 
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,9 +21,10 @@ Future<void> main() async {
       androidNotificationChannelId: 'com.cuicatl.audio',
       androidNotificationChannelName: 'Cuicatl Playback',
       androidNotificationOngoing: true,
+      notificationColor: const Color(0xFF8B5CF6),
     );
   } catch (e) {
-    debugPrint("Background init error (No crítico): $e");
+    debugPrint("Background init error: $e");
   }
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -292,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadName();
-    _requestPermissions(); 
+    _initPermissions(); // Usamos tu clase nueva
   }
 
   Future<void> _loadName() async {
@@ -300,20 +301,15 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _userName = prefs.getString('userName') ?? "Usuario");
   }
 
-  Future<void> _requestPermissions() async {
-    // 1. Verificar versión para permisos exactos
-    if (Platform.isAndroid) {
-      final androidInfo = await DeviceInfoPlugin().androidInfo;
-      if (androidInfo.version.sdkInt >= 33) {
-        await [Permission.audio, Permission.notification].request();
-      } else {
-        await [Permission.storage].request();
-      }
-    }
-    // 2. Método de la librería como refuerzo
-    bool hasPerm = await _audioQuery.permissionsStatus();
-    if (!hasPerm) await _audioQuery.permissionsRequest();
+  // --- INTEGRACIÓN DE TU CÓDIGO ---
+  Future<void> _initPermissions() async {
+    // Llamamos a tu clase estática AppPermissions
+    bool granted = await AppPermissions.requestMedia();
     
+    if (!granted) {
+      // Si el usuario denegó, intentamos una vez más con el método legacy por si acaso
+      await _audioQuery.permissionsRequest();
+    }
     setState(() {});
   }
 
@@ -343,20 +339,16 @@ class _HomeScreenState extends State<HomeScreen> {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(children: [_buildPill(_userName, 0), _buildPill("Música", 1), _buildPill("Artistas", 2), _buildPill("Playlists", 3)]),
+          child: Row(children: [_buildPill("Música", 0), _buildPill("Artistas", 1), _buildPill("Playlists", 2)]),
         ),
         const SizedBox(height: 20),
-        Expanded(child: _buildBodyContent()),
+        Expanded(child: _buildHomeTab()),
       ],
     );
   }
 
   Widget _buildPill(String text, int index) {
     return Container(margin: const EdgeInsets.only(right: 12), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(30)), child: Text(text, style: GoogleFonts.outfit(color: Colors.white60, fontWeight: FontWeight.bold)));
-  }
-
-  Widget _buildBodyContent() {
-    return _buildHomeTab();
   }
 
   Widget _buildHomeTab() {
@@ -393,9 +385,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, item) {
         if (item.data == null) return const Center(child: CircularProgressIndicator());
         var list = item.data!;
-        // Filtramos audios muy cortos (tonos, notificaciones)
-        list = list.where((s) => s.duration != null && s.duration! > 15000).toList();
-        
+        list = list.where((s) => s.duration != null && s.duration! > 10000).toList();
         return ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -504,7 +494,6 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-// --- REPRODUCTOR (SISTEMA HÍBRIDO A PRUEBA DE FALLOS) ---
 class PlayerScreen extends StatefulWidget {
   final List<SongModel> initialQueue;
   final int initialIndex;
@@ -549,12 +538,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // --- LÓGICA HÍBRIDA DE REPRODUCCIÓN ---
+  // --- REPRODUCCIÓN ANDROID 14 ROBUSTA ---
   Future<void> _initPlaylist() async {
     try {
-      // 1. INTENTO PRIMARIO: Con Metadata (Notificación bonita)
       final playlist = ConcatenatingAudioSource(
         children: widget.initialQueue.map((song) {
+          // Usamos la URI Content:// obligatoria para Android 14
           Uri audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
           return AudioSource.uri(
             audioUri,
@@ -569,25 +558,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
       await widget.audioPlayer.setAudioSource(playlist, initialIndex: widget.initialIndex);
       widget.audioPlayer.play();
-    
     } catch (e) { 
-      debugPrint("Error Modo Premium: $e");
-      // 2. FALLBACK (MODO SEGURO): Si falla el servicio, reproducimos sin metadata
-      // Esto garantiza que suene la música aunque falle la notificación
+      debugPrint("Error playback: $e");
+      // Fallback de emergencia
       try {
-        List<AudioSource> simpleSources = widget.initialQueue.map((song) => 
-          AudioSource.uri(Uri.parse("content://media/external/audio/media/${song.id}"))
-        ).toList();
-        
-        await widget.audioPlayer.setAudioSource(
-          ConcatenatingAudioSource(children: simpleSources), 
-          initialIndex: widget.initialIndex
-        );
-        widget.audioPlayer.play();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Reproduciendo en Modo Seguro")));
-      } catch (e2) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error fatal: Archivo corrupto o sin acceso.")));
-      }
+         if (widget.initialQueue[widget.initialIndex].uri != null) {
+            await widget.audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(widget.initialQueue[widget.initialIndex].uri!)));
+            widget.audioPlayer.play();
+         }
+      } catch (e2) {}
     }
   }
 
