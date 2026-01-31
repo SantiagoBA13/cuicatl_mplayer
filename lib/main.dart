@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
@@ -11,18 +12,20 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:android_intent_plus/android_intent.dart';
 
+// --- PUNTO DE ENTRADA ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // INICIO DEL SERVICIO DE NOTIFICACIONES
   try {
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.cuicatl.audio',
       androidNotificationChannelName: 'Cuicatl Playback',
       androidNotificationOngoing: true,
+      // Icono de notificación predeterminado (si existe en assets, si no usa launcher)
+      notificationColor: const Color(0xFF8B5CF6),
     );
   } catch (e) {
-    debugPrint("Error iniciando background: $e");
+    debugPrint("Background init error: $e");
   }
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -92,13 +95,16 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
             animation: _controller,
             builder: (context, _) {
               return Positioned(
-                top: -50 + (_controller.value * 60),
+                top: -100 + (_controller.value * 60),
                 left: -80 + (_controller.value * 40),
                 child: Container(
                   width: 500, height: 500,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: RadialGradient(colors: [const Color(0xFF4C1D95).withOpacity(0.5), Colors.transparent], radius: 0.6),
+                    gradient: RadialGradient(
+                      colors: [const Color(0xFF4C1D95).withOpacity(0.5), Colors.transparent], 
+                      radius: 0.6
+                    ),
                   ),
                 ),
               );
@@ -114,7 +120,10 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
                   width: 500, height: 500,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: RadialGradient(colors: [const Color(0xFFBE123C).withOpacity(0.4), Colors.transparent], radius: 0.6),
+                    gradient: RadialGradient(
+                      colors: [const Color(0xFFBE123C).withOpacity(0.4), Colors.transparent], 
+                      radius: 0.6
+                    ),
                   ),
                 ),
               );
@@ -131,7 +140,7 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
   }
 }
 
-// --- ROOT HANDLER ---
+// --- GESTIÓN DE INICIO ---
 class RootHandler extends StatefulWidget {
   const RootHandler({super.key});
   @override
@@ -195,7 +204,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-// --- MAIN NAVIGATION ---
+// --- NAVEGACIÓN ---
 class MainNavigationController extends StatefulWidget {
   const MainNavigationController({super.key});
   @override
@@ -298,7 +307,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadName();
-    _checkPermission();
+    _requestPermissions(); 
   }
 
   Future<void> _loadName() async {
@@ -306,14 +315,15 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _userName = prefs.getString('userName') ?? "Usuario");
   }
 
-  // --- CORRECCIÓN DE PERMISOS: Usamos el método nativo de la librería ---
-  Future<void> _checkPermission() async {
-    bool permissionStatus = await _audioQuery.permissionsStatus();
-    if (!permissionStatus) {
-      await _audioQuery.permissionsRequest();
-    }
-    // Aseguramos notificación para Android 13+
-    await Permission.notification.request();
+  // --- PERMISOS ANDROID 13/14 ---
+  void _requestPermissions() async {
+    // Pedimos permisos específicos de Audio y Notificaciones
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.audio,
+      Permission.storage, // Fallback para Android viejos
+      Permission.notification, // Vital para el reproductor en barra
+    ].request();
+    
     setState(() {});
   }
 
@@ -373,20 +383,22 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Especial para ti", style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold))),
         const SizedBox(height: 15),
+        
         SizedBox(
           height: 180,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
             children: [
-              _buildCard("Mix Aleatorio", "Sorpresa para tu\nestado de ánimo.", const Color(0xFF34D399), const Color(0xFF059669), Icons.shuffle, _playRandomMix),
+              _buildCard("Music for Your Mood", "Soundtracks para cada\nuno de tus momentos.", const Color(0xFF34D399), const Color(0xFF059669), Icons.shuffle, _playRandomMix),
               const SizedBox(width: 15),
-              _buildCard("Novedades", "Lo más nuevo\nen tu biblioteca.", const Color(0xFFF97316), const Color(0xFFC2410C), Icons.flash_on, _playRandomMix),
+              _buildCard("Energy Boost", "Música para entrenar\no despertar.", const Color(0xFFF97316), const Color(0xFFC2410C), Icons.flash_on, _playRandomMix),
               const SizedBox(width: 15),
-              _buildCard("Chill Mode", "Sonidos suaves para\ndesconectar.", const Color(0xFFA855F7), const Color(0xFF7E22CE), Icons.nightlight_round, _playRandomMix),
+              _buildCard("Chill Mode", "Relájate y desconecta\ncon sonidos suaves.", const Color(0xFFA855F7), const Color(0xFF7E22CE), Icons.nightlight_round, _playRandomMix),
             ],
           ),
         ),
+
         const SizedBox(height: 25),
         Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Todas las canciones", style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold))),
         const SizedBox(height: 10),
@@ -406,6 +418,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (item.data == null) return const Center(child: CircularProgressIndicator());
         var list = item.data!;
         if (limit != null) list = list.take(limit).toList();
+
         return ListView.builder(
           shrinkWrap: limit != null,
           physics: limit != null ? const NeverScrollableScrollPhysics() : null,
@@ -427,14 +440,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildArtistsTab() {
     return FutureBuilder<List<ArtistModel>>(
-      future: _audioQuery.queryArtists(),
+      future: _audioQuery.queryArtists(sortType: ArtistSortType.ARTIST, orderType: OrderType.ASC_OR_SMALLER),
       builder: (context, item) {
         if (item.data == null) return const Center(child: CircularProgressIndicator());
         return ListView.builder(
           padding: const EdgeInsets.only(bottom: 120), itemCount: item.data!.length,
           itemBuilder: (context, index) => ListTile(
             leading: const CircleAvatar(backgroundColor: Colors.white10, child: Icon(Icons.person)),
-            title: Text(item.data![index].artist),
+            title: Text(item.data![index].artist, maxLines: 1),
             subtitle: Text("${item.data![index].numberOfTracks} canciones"),
             onTap: () async {
                 List<SongModel> songs = await _audioQuery.queryAudiosFrom(AudiosFromType.ARTIST_ID, item.data![index].id);
@@ -453,7 +466,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ListTile(
           leading: Container(padding: const EdgeInsets.all(10), decoration: const BoxDecoration(color: Color(0xFF8B5CF6), shape: BoxShape.circle), child: const Icon(Icons.add, color: Colors.white)),
           title: const Text("Crear Nueva Playlist", style: TextStyle(fontWeight: FontWeight.bold)),
-          onTap: () {},
+          onTap: () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Creando Playlist..."))); },
         ),
       ],
     );
@@ -551,7 +564,7 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-// --- REPRODUCTOR (AUDIO FIX: Content URI) ---
+// --- REPRODUCTOR (ANDROID 14 AUDIO FIX) ---
 class PlayerScreen extends StatefulWidget {
   final List<SongModel> initialQueue;
   final int initialIndex;
@@ -586,7 +599,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (_pageController.hasClients && _pageController.page?.round() != index) {
           _pageController.animateToPage(index, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
         }
-        _updatePalette(); _checkFav();
+        _updatePalette(); 
+        _checkFav();
       }
     });
 
@@ -595,27 +609,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // --- SOLUCIÓN DE AUDIO: URI CONTENT:// ---
+  // --- SOLUCIÓN DE REPRODUCCIÓN ---
+  // Construye la URI content:// que Android 13/14 necesita.
   Future<void> _initPlaylist() async {
     try {
       final playlist = ConcatenatingAudioSource(
         children: widget.initialQueue.map((song) {
-          // ESTA LÍNEA ES LA MAGIA: Forzamos la URI de contenido de Android
+          
+          // FORZAMOS LA URI CONTENT:// 
+          // Esto soluciona el "no se escucha" en Android 13/14
           Uri audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
+          
           return AudioSource.uri(
             audioUri,
             tag: MediaItem(
               id: song.id.toString(),
               title: song.title,
               artist: song.artist ?? "Desconocido",
-              artUri: null, // Evitamos crash en notificación por URI inválida
+              artUri: null, // Evitamos crash en notificación si no hay arte
             ),
           );
         }).toList(),
       );
       await widget.audioPlayer.setAudioSource(playlist, initialIndex: widget.initialIndex);
       widget.audioPlayer.play();
-    } catch (e) { debugPrint("Playback Error: $e"); }
+    } catch (e) { 
+      debugPrint("Playback Error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error al reproducir. Revisa formato de archivo.")));
+    }
   }
 
   Future<void> _updatePalette() async {
@@ -652,23 +673,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
       backgroundColor: Colors.transparent, 
       body: Stack(
         children: [
-          AnimatedContainer(duration: const Duration(milliseconds: 800), decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_adaptiveBackground.withOpacity(0.8), Colors.black]))),
+          // Fondo Adaptativo + Blur
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 800),
+            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_adaptiveBackground.withOpacity(0.8), Colors.black]))
+          ),
           Positioned.fill(child: Opacity(opacity: 0.3, child: QueryArtworkWidget(id: currentSong.id, type: ArtworkType.AUDIO, artworkHeight: double.infinity, artworkWidth: double.infinity, size: 1000, artworkFit: BoxFit.cover, nullArtworkWidget: const SizedBox()))),
           BackdropFilter(filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40), child: Container(color: Colors.transparent)),
           
           SafeArea(
             child: Column(
               children: [
+                // Header Glass
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: () => Navigator.pop(context)),
-                    IconButton(icon: const Icon(Icons.ios_share), onPressed: () {}),
-                  ]),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _glassBtn(Icons.keyboard_arrow_down, () => Navigator.pop(context)),
+                      _glassBtn(Icons.ios_share, () {}),
+                    ],
+                  ),
                 ),
+                
                 const Spacer(),
                 
-                // CARÁTULA
+                // Carrusel
                 SizedBox(
                   height: 340,
                   child: PageView.builder(
@@ -687,10 +717,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const SizedBox(height: 30),
                 
-                // INFO + FAVORITO
+                // Info + Favorito
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 30),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -703,6 +734,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ],
                   ),
                 ),
+                
                 const SizedBox(height: 20),
                 
                 // WAVEFORM + TIEMPO
@@ -771,6 +803,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _glassBtn(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: Colors.white, size: 20)),
     );
   }
 }
