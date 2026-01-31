@@ -1,7 +1,7 @@
 name: cuicatl_mplayer
-description: Reproductor de música Cuicatl.
+description: Reproductor de música Cuicatl Ultimate.
 publish_to: 'none'
-version: 9.0.0+1
+version: 10.0.0+1
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -9,16 +9,24 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
+  # --- UI y Diseño ---
   cupertino_icons: ^1.0.6
   google_fonts: ^6.1.0
+  palette_generator: ^0.3.3  # Para los colores de la carátula
+  
+  # --- Motor de Audio ---
   just_audio: ^0.9.36
-  just_audio_background: ^0.0.1-beta.11
-  on_audio_query: ^2.9.0
-  permission_handler: ^11.3.0
-  shared_preferences: ^2.2.2
-  palette_generator: ^0.3.3
-  android_intent_plus: ^4.0.0
-  device_info_plus: ^10.1.0
+  just_audio_background: ^0.0.1-beta.11 # Notificación y servicio de fondo
+  
+  # --- Datos y Archivos ---
+  on_audio_query: ^2.9.0     # Leer canciones del dispositivo
+  shared_preferences: ^2.2.2 # Guardar favoritos y configuración
+  
+  # --- Permisos y Sistema (CRÍTICO PARA ANDROID 14) ---
+  permission_handler: ^11.3.0  # Manejo avanzado de permisos
+  device_info_plus: ^10.1.0    # Detectar versión de Android
+  android_intent_plus: ^4.0.0  # Abrir Ecualizador del sistema
 
 dev_dependencies:
   flutter_test:
