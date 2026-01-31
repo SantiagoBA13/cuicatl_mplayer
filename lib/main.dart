@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'dart:math';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
@@ -15,17 +16,14 @@ import 'package:device_info_plus/device_info_plus.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // INTENTO ROBUSTO DE INICIAR SERVICIO
   try {
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.cuicatl.audio',
       androidNotificationChannelName: 'Cuicatl Playback',
       androidNotificationOngoing: true,
-      notificationColor: const Color(0xFF8B5CF6),
     );
   } catch (e) {
-    debugPrint("⚠️ Error crítico en Background Service: $e");
-    // No detenemos la app, pero el usuario no tendrá notificaciones
+    debugPrint("Background init error (No crítico): $e");
   }
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -123,10 +121,7 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
               );
             },
           ),
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
-            child: Container(color: Colors.transparent),
-          ),
+          BackdropFilter(filter: ImageFilter.blur(sigmaX: 80, sigmaY: 80), child: Container(color: Colors.transparent)),
           widget.child,
         ],
       ),
@@ -297,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadName();
-    _checkPermission(); 
+    _requestPermissions(); 
   }
 
   Future<void> _loadName() async {
@@ -305,19 +300,20 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _userName = prefs.getString('userName') ?? "Usuario");
   }
 
-  // --- PERMISOS ANDROID 14 ---
-  Future<void> _checkPermission() async {
-    // 1. Pedir permisos usando permission_handler (es más robusto para Android 14)
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.audio,
-      Permission.storage, 
-      Permission.notification
-    ].request();
-    
-    // 2. Si falla, intentar el método legacy de audio_query
-    if (statuses[Permission.audio] != PermissionStatus.granted) {
-       await _audioQuery.permissionsRequest();
+  Future<void> _requestPermissions() async {
+    // 1. Verificar versión para permisos exactos
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      if (androidInfo.version.sdkInt >= 33) {
+        await [Permission.audio, Permission.notification].request();
+      } else {
+        await [Permission.storage].request();
+      }
     }
+    // 2. Método de la librería como refuerzo
+    bool hasPerm = await _audioQuery.permissionsStatus();
+    if (!hasPerm) await _audioQuery.permissionsRequest();
+    
     setState(() {});
   }
 
@@ -347,10 +343,10 @@ class _HomeScreenState extends State<HomeScreen> {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(children: [_buildPill("Música", 0), _buildPill("Artistas", 1), _buildPill("Playlists", 2)]),
+          child: Row(children: [_buildPill(_userName, 0), _buildPill("Música", 1), _buildPill("Artistas", 2), _buildPill("Playlists", 3)]),
         ),
         const SizedBox(height: 20),
-        Expanded(child: _buildHomeTab()),
+        Expanded(child: _buildBodyContent()),
       ],
     );
   }
@@ -359,13 +355,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(margin: const EdgeInsets.only(right: 12), padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10), decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(30)), child: Text(text, style: GoogleFonts.outfit(color: Colors.white60, fontWeight: FontWeight.bold)));
   }
 
+  Widget _buildBodyContent() {
+    return _buildHomeTab();
+  }
+
   Widget _buildHomeTab() {
     return ListView(
       padding: const EdgeInsets.only(bottom: 120),
       children: [
         Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Especial para ti", style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold))),
         const SizedBox(height: 15),
-        
         SizedBox(
           height: 180,
           child: ListView(
@@ -380,7 +379,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-
         const SizedBox(height: 25),
         Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Todas las canciones", style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold))),
         const SizedBox(height: 10),
@@ -395,8 +393,8 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, item) {
         if (item.data == null) return const Center(child: CircularProgressIndicator());
         var list = item.data!;
-        // Filtro de seguridad para archivos corruptos
-        list = list.where((s) => s.duration != null && s.duration! > 10000).toList();
+        // Filtramos audios muy cortos (tonos, notificaciones)
+        list = list.where((s) => s.duration != null && s.duration! > 15000).toList();
         
         return ListView.builder(
           shrinkWrap: true,
@@ -506,6 +504,7 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
+// --- REPRODUCTOR (SISTEMA HÍBRIDO A PRUEBA DE FALLOS) ---
 class PlayerScreen extends StatefulWidget {
   final List<SongModel> initialQueue;
   final int initialIndex;
@@ -550,14 +549,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // --- SOLUCIÓN DE REPRODUCCIÓN ANDROID 14 ---
+  // --- LÓGICA HÍBRIDA DE REPRODUCCIÓN ---
   Future<void> _initPlaylist() async {
     try {
+      // 1. INTENTO PRIMARIO: Con Metadata (Notificación bonita)
       final playlist = ConcatenatingAudioSource(
         children: widget.initialQueue.map((song) {
-          // URI Universal que Android 14 no bloquea
           Uri audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
-          
           return AudioSource.uri(
             audioUri,
             tag: MediaItem(
@@ -571,16 +569,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
       await widget.audioPlayer.setAudioSource(playlist, initialIndex: widget.initialIndex);
       widget.audioPlayer.play();
+    
     } catch (e) { 
-      debugPrint("Playback Error: $e");
-      // Fallback a URI directa si content:// falla (raro, pero posible en algunos ROMs)
+      debugPrint("Error Modo Premium: $e");
+      // 2. FALLBACK (MODO SEGURO): Si falla el servicio, reproducimos sin metadata
+      // Esto garantiza que suene la música aunque falle la notificación
       try {
-         if (widget.initialQueue[widget.initialIndex].uri != null) {
-            await widget.audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(widget.initialQueue[widget.initialIndex].uri!)));
-            widget.audioPlayer.play();
-         }
+        List<AudioSource> simpleSources = widget.initialQueue.map((song) => 
+          AudioSource.uri(Uri.parse("content://media/external/audio/media/${song.id}"))
+        ).toList();
+        
+        await widget.audioPlayer.setAudioSource(
+          ConcatenatingAudioSource(children: simpleSources), 
+          initialIndex: widget.initialIndex
+        );
+        widget.audioPlayer.play();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Reproduciendo en Modo Seguro")));
       } catch (e2) {
-         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error fatal: Archivo inaccesible.")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error fatal: Archivo corrupto o sin acceso.")));
       }
     }
   }
