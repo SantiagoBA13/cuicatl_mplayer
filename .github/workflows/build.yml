@@ -7,40 +7,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Instalar Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
-
       - name: Instalar Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.19.0'
           channel: 'stable'
-
       - name: Generar estructura Android
         run: flutter create . --project-name cuicatl_mplayer --org com.cuicatl
 
-      # --- INYECCIÓN DE PERMISOS SIMPLIFICADA ---
+      # --- INYECCIÓN DE PERMISOS CRÍTICOS ---
       - name: Inyectar Manifiesto Android
         run: |
-          # Inyectamos permisos básicos de lectura y servicio
-          sed -i 's/<application/<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"\/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"\/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"\/>\n    <application/g' android/app/src/main/AndroidManifest.xml
+          sed -i 's/<application/<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"\/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"\/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"\/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"\/>\n    <application/g' android/app/src/main/AndroidManifest.xml
           
-          # Inyectamos el servicio de audio para notificaciones
           sed -i 's/android:name="io.flutter.app.FlutterApplication"/android:name="\$\{applicationName\}"/g' android/app/src/main/AndroidManifest.xml
+          
           sed -i 's/<\/application>/<service android:name="com.ryanheise.just_audio_background.AudioService" android:foregroundServiceType="mediaPlayback" android:exported="true"><intent-filter><action android:name="android.media.browse.MediaBrowserService" \/><\/intent-filter><\/service><\/application>/g' android/app/src/main/AndroidManifest.xml
 
       - name: Instalar dependencias
         run: flutter pub get
-
       - name: Construir APK
         run: flutter build apk --release --no-tree-shake-icons
-
       - name: Subir APK
         uses: actions/upload-artifact@v4
         with:
-          name: cuicatl-app-v5-fixed
+          name: cuicatl-app-v5-final
           path: build/app/outputs/flutter-apk/app-release.apk
+          
