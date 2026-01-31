@@ -26,7 +26,7 @@ dependencies:
   # UI y Colores
   palette_generator: ^0.3.3
   
-  # Para abrir el Ecualizador Nativo (La forma estable)
+  # Para abrir el Ecualizador Nativo (Estable)
   android_intent_plus: ^4.0.0
 
 dev_dependencies:
