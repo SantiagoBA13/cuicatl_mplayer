@@ -23,18 +23,15 @@ jobs:
       - name: Generar estructura Android
         run: flutter create . --project-name cuicatl_mplayer --org com.cuicatl
 
-      # --- INYECCIÓN DE PERMISOS Y SERVICIO DE NOTIFICACIONES ---
+      # --- INYECCIÓN DE PERMISOS SIMPLIFICADA ---
       - name: Inyectar Manifiesto Android
         run: |
-          # 1. Permisos de lectura
+          # Inyectamos permisos básicos de lectura y servicio
           sed -i 's/<application/<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"\/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"\/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"\/>\n    <application/g' android/app/src/main/AndroidManifest.xml
           
-          # 2. Servicio para JustAudioBackground (Notificación)
+          # Inyectamos el servicio de audio para notificaciones
           sed -i 's/android:name="io.flutter.app.FlutterApplication"/android:name="\$\{applicationName\}"/g' android/app/src/main/AndroidManifest.xml
           sed -i 's/<\/application>/<service android:name="com.ryanheise.just_audio_background.AudioService" android:foregroundServiceType="mediaPlayback" android:exported="true"><intent-filter><action android:name="android.media.browse.MediaBrowserService" \/><\/intent-filter><\/service><\/application>/g' android/app/src/main/AndroidManifest.xml
-          
-          # Verificación en consola
-          cat android/app/src/main/AndroidManifest.xml 
 
       - name: Instalar dependencias
         run: flutter pub get
@@ -45,5 +42,5 @@ jobs:
       - name: Subir APK
         uses: actions/upload-artifact@v4
         with:
-          name: cuicatl-app-v4
+          name: cuicatl-app-v5-fixed
           path: build/app/outputs/flutter-apk/app-release.apk
