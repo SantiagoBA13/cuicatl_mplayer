@@ -557,12 +557,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // --- REPRODUCCIÓN A PRUEBA DE BALAS ---
+  // --- REPRODUCCIÓN ANDROID 14 ROBUSTA ---
   Future<void> _initPlaylist() async {
     try {
       final playlist = ConcatenatingAudioSource(
         children: widget.initialQueue.map((song) {
-          // ESTA ES LA CLAVE PARA ANDROID 13/14: URI "content://"
+          // Usamos la URI Content:// obligatoria para Android 14
           Uri audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
           return AudioSource.uri(
             audioUri,
@@ -570,7 +570,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
               id: song.id.toString(),
               title: song.title,
               artist: song.artist ?? "Desconocido",
-              // Si el arte falla, no rompe la app
               artUri: null, 
             ),
           );
@@ -579,15 +578,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await widget.audioPlayer.setAudioSource(playlist, initialIndex: widget.initialIndex);
       widget.audioPlayer.play();
     } catch (e) { 
-      // Si falla, intentamos modo "crudo" (sin metadatos de notificación)
-      debugPrint("Error playback: $e. Intentando modo fallback...");
+      debugPrint("Error playback: $e");
+      // Fallback de emergencia por si content:// falla
       try {
-         final uri = Uri.parse("content://media/external/audio/media/${widget.initialQueue[widget.initialIndex].id}");
-         await widget.audioPlayer.setAudioSource(AudioSource.uri(uri));
-         widget.audioPlayer.play();
-      } catch (e2) {
-         debugPrint("Error fatal: $e2");
-      }
+         if (widget.initialQueue[widget.initialIndex].uri != null) {
+            await widget.audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(widget.initialQueue[widget.initialIndex].uri!)));
+            widget.audioPlayer.play();
+         }
+      } catch (e2) {}
     }
   }
 
@@ -641,7 +639,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const Spacer(),
                 
-                // CARÁTULA
                 SizedBox(
                   height: 340,
                   child: PageView.builder(
@@ -660,7 +657,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const SizedBox(height: 30),
                 
-                // INFO
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 30),
                   child: Row(
@@ -678,7 +674,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const SizedBox(height: 20),
                 
-                // WAVEFORM
                 StreamBuilder<Duration>(
                   stream: widget.audioPlayer.positionStream,
                   builder: (context, snapshot) {
@@ -795,17 +790,100 @@ class WaveformSlider extends StatelessWidget {
   }
 }
 
+// --- BUSCADOR MEJORADO ---
 class SongSearchDelegate extends SearchDelegate {
   final OnAudioQuery audioQuery;
   final Function(List<SongModel>, int) onPlay;
+
   SongSearchDelegate(this.audioQuery, this.onPlay);
 
   @override
-  ThemeData appBarTheme(BuildContext context) => ThemeData.dark().copyWith(scaffoldBackgroundColor: const Color(0xFF0F0F1E), appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF1E1E2C)));
+  ThemeData appBarTheme(BuildContext context) => ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF0F0F1E),
+        appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF1E1E2C)),
+      );
+
   @override
-  List<Widget>? buildActions(BuildContext context) => [IconButton(icon: const Icon(Icons.clear), onPressed: () => query = '')];
+  List<Widget>? buildActions(BuildContext context) => [
+        IconButton(
+          icon: const Icon(Icons.clear),
+          onPressed: () => query = '',
+        )
+      ];
+
   @override
-  Widget? buildLeading(BuildContext context) => IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => close(context, null));
+  Widget? buildLeading(BuildContext context) => IconButton(
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () => close(context, null),
+      );
+
   @override
   Widget buildResults(BuildContext context) => buildSuggestions(context);
+
   @override
+  Widget buildSuggestions(BuildContext context) {
+    // Si no hay búsqueda, muestra hint
+    if (query.trim().isEmpty) {
+      return const Center(
+        child: Text(
+          "Escribe para buscar canciones…",
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
+    return FutureBuilder<List<SongModel>>(
+      future: audioQuery.querySongs(
+        sortType: SongSortType.TITLE,
+        orderType: OrderType.ASC_OR_SMALLER,
+        uriType: UriType.EXTERNAL,
+        ignoreCase: true,
+      ),
+      builder: (context, snap) {
+        if (!snap.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final q = query.toLowerCase().trim();
+        final all = snap.data ?? [];
+
+        // Filtrado por título o artista
+        final filtered = all.where((s) {
+          final title = (s.title).toLowerCase();
+          final artist = (s.artist ?? "").toLowerCase();
+          return title.contains(q) || artist.contains(q);
+        }).toList();
+
+        if (filtered.isEmpty) {
+          return const Center(
+            child: Text(
+              "Sin resultados",
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: filtered.length,
+          itemBuilder: (context, index) {
+            final song = filtered[index];
+            return ListTile(
+              leading: QueryArtworkWidget(
+                id: song.id,
+                type: ArtworkType.AUDIO,
+                nullArtworkWidget: const Icon(Icons.music_note),
+              ),
+              title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(song.artist ?? "Desconocido", maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: const Icon(Icons.play_arrow),
+              onTap: () {
+                close(context, null);
+                onPlay(filtered, index);
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
