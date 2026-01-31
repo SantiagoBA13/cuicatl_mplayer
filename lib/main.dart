@@ -10,20 +10,25 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
-// CORRECCIÓN AQUÍ: El import correcto es este
-import 'package:android_intent_plus/android_intent.dart';
-import 'package:android_intent_plus/flag.dart'; // Para banderas del intent
+import 'package:android_intent_plus/android_intent.dart'; // Import corregido
 
-// --- PUNTO DE ENTRADA ---
+// --- PUNTO DE ENTRADA SEGURO ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  await JustAudioBackground.init(
-    androidNotificationChannelId: 'com.cuicatl.audio',
-    androidNotificationChannelName: 'Cuicatl Playback',
-    androidNotificationOngoing: true,
-  );
+  // Intento de iniciar notificaciones (Modo Seguro)
+  try {
+    await JustAudioBackground.init(
+      androidNotificationChannelId: 'com.cuicatl.audio',
+      androidNotificationChannelName: 'Cuicatl Playback',
+      androidNotificationOngoing: true,
+    );
+  } catch (e) {
+    debugPrint("Error iniciando notificaciones: $e");
+    // La app continuará aunque esto falle
+  }
 
+  // Configuración visual inmersiva
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -45,7 +50,7 @@ class CuicatlApp extends StatelessWidget {
       theme: ThemeData(
         brightness: Brightness.dark,
         useMaterial3: true,
-        scaffoldBackgroundColor: Colors.transparent, // CLAVE: Transparente para que se vea el fondo global
+        scaffoldBackgroundColor: Colors.black, // Fondo base negro para evitar parpadeos
         textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF8B5CF6),
@@ -58,6 +63,7 @@ class CuicatlApp extends StatelessWidget {
   }
 }
 
+// --- GESTOR DE ESTADO ---
 class RootHandler extends StatefulWidget {
   const RootHandler({super.key});
   @override
@@ -83,6 +89,7 @@ class _RootHandlerState extends State<RootHandler> {
   }
 }
 
+// --- ONBOARDING ---
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
   @override
@@ -135,7 +142,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
-// --- NAVEGACIÓN PRINCIPAL (FIXED) ---
+// --- NAVEGACIÓN PRINCIPAL (FIXED: Sin espacios negros) ---
 class MainNavigationController extends StatefulWidget {
   const MainNavigationController({super.key});
   @override
@@ -147,7 +154,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   List<SongModel> _currentQueue = [];
   
-  // Fondo Global
+  // Fondo Global Dinámico
   Color _bg1 = const Color(0xFF0F0F1E);
   Color _bg2 = Colors.black;
 
@@ -163,10 +170,11 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
       const SettingsScreen(),
     ];
     
+    // Escuchar cambios para actualizar el fondo global
     _audioPlayer.currentIndexStream.listen((index) {
        if (index != null && _audioPlayer.playing) {
-          // Simulación de cambio de ambiente
           setState(() {
+             // Cambio sutil de color de fondo al cambiar canción
              _bg1 = Colors.primaries[Random().nextInt(Colors.primaries.length)].withOpacity(0.3);
           });
        }
@@ -184,20 +192,17 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F1E), // Fondo base seguro
-      extendBody: true, // ESTO ELIMINA EL ESPACIO NEGRO
+      extendBody: true, // CLAVE: Esto permite que el contenido baje hasta el borde inferior
+      backgroundColor: Colors.transparent, // Transparente para ver el fondo del stack
       body: Stack(
         children: [
-          // 1. Fondo Global Animado
+          // 1. Fondo Global
           AnimatedContainer(
             duration: const Duration(seconds: 2),
             decoration: BoxDecoration(gradient: RadialGradient(center: Alignment.topLeft, radius: 1.3, colors: [_bg1, _bg2])),
           ),
-          // 2. Páginas (Transparentes)
-          SafeArea(
-            bottom: false, // Permitir que el contenido baje hasta el borde
-            child: _currentIndex == 1 ? HomeScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist) : _pages[_currentIndex],
-          ),
+          // 2. Contenido de la página
+          _currentIndex == 1 ? HomeScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist) : _pages[_currentIndex],
         ],
       ),
       bottomNavigationBar: _buildGlassNavBar(),
@@ -214,7 +219,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           child: Container(
             height: 75,
             decoration: BoxDecoration(
-              color: const Color(0xFF161622).withOpacity(0.6), // Semitransparente
+              color: const Color(0xFF161622).withOpacity(0.65), // Fondo semitransparente
               borderRadius: BorderRadius.circular(40),
               border: Border.all(color: Colors.white.withOpacity(0.1)),
             ),
@@ -294,32 +299,35 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text("CUICATL", style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 2)),
-              IconButton(icon: const Icon(Icons.search, size: 28), onPressed: () => showSearch(context: context, delegate: SongSearchDelegate(_audioQuery, widget.onPlayRequest))),
-            ],
+    return SafeArea(
+      bottom: false, // Permitir que baje hasta el fondo
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("CUICATL", style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                IconButton(icon: const Icon(Icons.search, size: 28), onPressed: () => showSearch(context: context, delegate: SongSearchDelegate(_audioQuery, widget.onPlayRequest))),
+              ],
+            ),
           ),
-        ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(children: [
-            _buildPill(_userName, 0),
-            _buildPill("Música", 1),
-            _buildPill("Artistas", 2),
-            _buildPill("Playlists", 3),
-          ]),
-        ),
-        const SizedBox(height: 20),
-        Expanded(child: _buildBodyContent()),
-      ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(children: [
+              _buildPill(_userName, 0),
+              _buildPill("Música", 1),
+              _buildPill("Artistas", 2),
+              _buildPill("Playlists", 3),
+            ]),
+          ),
+          const SizedBox(height: 20),
+          Expanded(child: _buildBodyContent()),
+        ],
+      ),
     );
   }
 
@@ -346,7 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildHomeTab() {
     return ListView(
-      padding: const EdgeInsets.only(bottom: 120),
+      padding: const EdgeInsets.only(bottom: 120), // Padding inferior para evitar el navBar
       children: [
         Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Especial para ti", style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold))),
         const SizedBox(height: 15),
@@ -371,7 +379,9 @@ class _HomeScreenState extends State<HomeScreen> {
           future: _audioQuery.querySongs(sortType: SongSortType.DATE_ADDED, orderType: OrderType.DESC_OR_GREATER),
           builder: (context, item) {
             if (item.data == null) return const SizedBox();
-            return Column(children: item.data!.take(5).map((e) => _songTile(e, item.data!, item.data!.indexOf(e))).toList());
+            // Tomamos 5 manualmente para evitar errores de versión
+            final recent = item.data!.take(5).toList();
+            return Column(children: recent.map((e) => _songTile(e, item.data!, item.data!.indexOf(e))).toList());
           },
         )
       ],
@@ -484,7 +494,7 @@ class SongSearchDelegate extends SearchDelegate {
   }
 }
 
-// --- FAVORITOS (Transparente) ---
+// --- FAVORITOS ---
 class FavoritesScreen extends StatefulWidget {
   final AudioPlayer audioPlayer;
   final Function(List<SongModel>, int) onPlayRequest;
@@ -565,9 +575,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() { if(key == 'hqAudio') _hqAudio = value; if(key == 'crossfade') _crossfade = value; if(key == 'amoled') _amoled = value; });
   }
   
+  // ABRIR ECUALIZADOR (Corregido)
   void _openSystemEQ() {
     try {
-      const AndroidIntent intent = AndroidIntent(action: 'android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL');
+      // Usamos el constructor sin const y con action correcta
+      const intent = AndroidIntent(action: 'android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL');
       intent.launch();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No se encontró Ecualizador en tu sistema")));
@@ -604,7 +616,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-// --- REPRODUCTOR PREMIUM (CON NOTIFICACIONES REALES) ---
+// --- REPRODUCTOR PREMIUM (Fixed) ---
 class PlayerScreen extends StatefulWidget {
   final List<SongModel> initialQueue;
   final int initialIndex;
@@ -749,7 +761,13 @@ class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderSt
                         color: const Color(0xFF1E1E2C),
                         onSelected: (v) {
                           if (v == 'timer') _showTimerDialog();
-                          if (v == 'eq') { try { const AndroidIntent(action: 'android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL').launch(); } catch(e){} }
+                          if (v == 'eq') { 
+                            try { 
+                              const AndroidIntent(action: 'android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL').launch(); 
+                            } catch(e){
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sin EQ en el sistema")));
+                            } 
+                          }
                         },
                         itemBuilder: (c) => [
                           const PopupMenuItem(value: 'timer', child: Text("Temporizador 🌙")),
