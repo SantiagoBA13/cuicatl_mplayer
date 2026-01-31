@@ -6,20 +6,19 @@ import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:on_audio_query/on_audio_query.dart';
-import 'package:permission_handler/permission_handler.dart'; // Aunque lo usamos en permissions.dart, a veces es útil aquí
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
-// --- IMPORTACIÓN DE TU LÓGICA DE PERMISOS ---
-import 'permissions.dart'; 
-
+// --- PUNTO DE ENTRADA ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   try {
+    // Inicialización del Servicio de Segundo Plano
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.cuicatl.audio',
       androidNotificationChannelName: 'Cuicatl Playback',
@@ -27,7 +26,7 @@ Future<void> main() async {
       notificationColor: const Color(0xFF8B5CF6),
     );
   } catch (e) {
-    debugPrint("Background init error (No crítico): $e");
+    debugPrint("⚠️ Error iniciando servicio background: $e");
   }
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -64,7 +63,7 @@ class CuicatlApp extends StatelessWidget {
   }
 }
 
-// --- FONDO ANIMADO ---
+// --- FONDO ANIMADO (LAVA LAMP) ---
 class AnimatedBackground extends StatefulWidget {
   final Widget child;
   const AnimatedBackground({super.key, required this.child});
@@ -133,6 +132,7 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
   }
 }
 
+// --- GESTIÓN DE USUARIO ---
 class RootHandler extends StatefulWidget {
   const RootHandler({super.key});
   @override
@@ -196,6 +196,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
+// --- NAVEGACIÓN PRINCIPAL ---
 class MainNavigationController extends StatefulWidget {
   const MainNavigationController({super.key});
   @override
@@ -213,7 +214,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     super.initState();
     _pages = [
       HomeScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist),
-      Container(),
+      Container(), // Placeholder
       FavoritesScreen(audioPlayer: _audioPlayer, onPlayRequest: _playPlaylist),
       const SettingsScreen(),
     ];
@@ -280,7 +281,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   }
 }
 
-// --- HOME SCREEN (INTEGRACIÓN COMPLETA DE PERMISOS) ---
+// --- PANTALLA DE INICIO (HOME) ---
 class HomeScreen extends StatefulWidget {
   final AudioPlayer audioPlayer;
   final Function(List<SongModel>, int) onPlayRequest;
@@ -297,8 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadName();
-    // Aquí inicia la magia de permisos + carga
-    _initPermissions(); 
+    _initAndroidPermissions(); // Ejecutamos la lógica corregida
   }
 
   Future<void> _loadName() async {
@@ -306,23 +306,26 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _userName = prefs.getString('userName') ?? "Usuario");
   }
 
-  // --- LÓGICA DE PERMISOS INTEGRADA ---
-  Future<void> _initPermissions() async {
-    // 1. Llamamos a tu clase personalizada y esperamos (await)
-    // Esto pausará la ejecución hasta que el usuario responda el diálogo del sistema
-    bool granted = await AppPermissions.requestMedia();
+  // --- LÓGICA MAESTRA DE PERMISOS (ANDROID 13/14) ---
+  Future<void> _initAndroidPermissions() async {
+    if (Platform.isAndroid) {
+      final androidInfo = await DeviceInfoPlugin().androidInfo;
+      // Si es Android 13 (SDK 33) o superior...
+      if (androidInfo.version.sdkInt >= 33) {
+        debugPrint("📱 Detectado Android 13/14 - Solicitando permisos de AUDIO y NOTIFICACIÓN");
+        await [
+          Permission.audio,        // El permiso nuevo
+          Permission.notification, // Necesario para el mini reproductor
+        ].request();
+      } else {
+        // Android 12 o inferior
+        debugPrint("📱 Detectado Android Legacy - Solicitando STORAGE");
+        await Permission.storage.request();
+      }
+    }
     
-    // 2. Si por alguna razón la lógica manual falla, usamos el backup de la librería
-    if (!granted) {
-      await _audioQuery.permissionsRequest();
-    }
-
-    // 3. Una vez resuelto el permiso, actualizamos la UI.
-    // Al hacer setState, el FutureBuilder de abajo se reconstruye y
-    // ejecuta _audioQuery.querySongs(), que ahora SÍ tendrá permiso para leer.
-    if (mounted) {
-      setState(() {});
-    }
+    // Refresco para que on_audio_query sepa que ya tiene permisos
+    setState(() {});
   }
 
   Future<void> _playRandomMix() async {
@@ -393,17 +396,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildMusicList() {
     return FutureBuilder<List<SongModel>>(
-      // Este future se ejecutará cada vez que hagamos setState.
-      // Gracias a _initPermissions, cuando llegue aquí ya deberíamos tener acceso.
       future: _audioQuery.querySongs(sortType: SongSortType.DATE_ADDED, orderType: OrderType.DESC_OR_GREATER, uriType: UriType.EXTERNAL, ignoreCase: true),
       builder: (context, item) {
         if (item.data == null) return const Center(child: CircularProgressIndicator());
-        
         var list = item.data!;
-        // Filtro de seguridad: ignorar audios de menos de 10 segundos
+        // Filtro de seguridad
         list = list.where((s) => s.duration != null && s.duration! > 10000).toList();
         
-        if (list.isEmpty) return const Center(child: Text("No se encontraron canciones.\nVerifica que diste permiso.", textAlign: TextAlign.center));
+        if (list.isEmpty) return const Center(child: Text("No se encontraron canciones.\nVerifica permisos.", textAlign: TextAlign.center));
 
         return ListView.builder(
           shrinkWrap: true,
@@ -557,12 +557,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
-  // --- REPRODUCCIÓN ANDROID 14 ROBUSTA ---
+  // --- REPRODUCCIÓN A PRUEBA DE BALAS ---
   Future<void> _initPlaylist() async {
     try {
       final playlist = ConcatenatingAudioSource(
         children: widget.initialQueue.map((song) {
-          // Usamos la URI Content:// obligatoria para Android 14
+          // ESTA ES LA CLAVE PARA ANDROID 13/14: URI "content://"
           Uri audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
           return AudioSource.uri(
             audioUri,
@@ -570,6 +570,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               id: song.id.toString(),
               title: song.title,
               artist: song.artist ?? "Desconocido",
+              // Si el arte falla, no rompe la app
               artUri: null, 
             ),
           );
@@ -578,14 +579,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
       await widget.audioPlayer.setAudioSource(playlist, initialIndex: widget.initialIndex);
       widget.audioPlayer.play();
     } catch (e) { 
-      debugPrint("Error playback: $e");
-      // Fallback de emergencia por si content:// falla
+      // Si falla, intentamos modo "crudo" (sin metadatos de notificación)
+      debugPrint("Error playback: $e. Intentando modo fallback...");
       try {
-         if (widget.initialQueue[widget.initialIndex].uri != null) {
-            await widget.audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(widget.initialQueue[widget.initialIndex].uri!)));
-            widget.audioPlayer.play();
-         }
-      } catch (e2) {}
+         final uri = Uri.parse("content://media/external/audio/media/${widget.initialQueue[widget.initialIndex].id}");
+         await widget.audioPlayer.setAudioSource(AudioSource.uri(uri));
+         widget.audioPlayer.play();
+      } catch (e2) {
+         debugPrint("Error fatal: $e2");
+      }
     }
   }
 
@@ -639,6 +641,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const Spacer(),
                 
+                // CARÁTULA
                 SizedBox(
                   height: 340,
                   child: PageView.builder(
@@ -657,6 +660,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const SizedBox(height: 30),
                 
+                // INFO
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 30),
                   child: Row(
@@ -674,6 +678,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 const SizedBox(height: 20),
                 
+                // WAVEFORM
                 StreamBuilder<Duration>(
                   stream: widget.audioPlayer.positionStream,
                   builder: (context, snapshot) {
@@ -804,18 +809,3 @@ class SongSearchDelegate extends SearchDelegate {
   @override
   Widget buildResults(BuildContext context) => buildSuggestions(context);
   @override
-  Widget buildSuggestions(BuildContext context) {
-    return FutureBuilder<List<SongModel>>(
-      future: audioQuery.querySongs(),
-      builder: (context, item) {
-        if (!item.hasData) return const Center(child: CircularProgressIndicator());
-        final results = item.data!.where((s) => s.title.toLowerCase().contains(query.toLowerCase())).toList();
-        return ListView.builder(
-          itemCount: results.length, itemBuilder: (context, index) {
-            return ListTile(title: Text(results[index].title), subtitle: Text(results[index].artist ?? ""), onTap: () { close(context, null); onPlay(results, index); });
-          },
-        );
-      },
-    );
-  }
-}
