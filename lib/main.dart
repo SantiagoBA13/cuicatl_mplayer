@@ -1,6 +1,5 @@
 import 'dart:ui';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
@@ -12,10 +11,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:android_intent_plus/android_intent.dart';
 
-// --- PUNTO DE ENTRADA ---
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Inicializar Notificaciones
   try {
     await JustAudioBackground.init(
       androidNotificationChannelId: 'com.cuicatl.audio',
@@ -23,7 +22,7 @@ Future<void> main() async {
       androidNotificationOngoing: true,
     );
   } catch (e) {
-    debugPrint("Info: Background service check ($e)");
+    debugPrint("Background init error: $e");
   }
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -60,7 +59,7 @@ class CuicatlApp extends StatelessWidget {
   }
 }
 
-// --- FONDO ANIMADO "LAVA LAMP" ---
+// --- FONDO ANIMADO (LAVA LAMP) ---
 class AnimatedBackground extends StatefulWidget {
   final Widget child;
   const AnimatedBackground({super.key, required this.child});
@@ -74,7 +73,7 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat(reverse: true);
+    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 15))..repeat(reverse: true);
   }
 
   @override
@@ -89,19 +88,19 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
       backgroundColor: const Color(0xFF020205),
       body: Stack(
         children: [
-          // Esfera Azul
+          // Burbuja 1 (Azul)
           AnimatedBuilder(
             animation: _controller,
             builder: (context, _) {
               return Positioned(
-                top: -100 + (_controller.value * 50),
-                left: -80 + (_controller.value * 30),
+                top: -50 + (_controller.value * 60),
+                left: -80 + (_controller.value * 40),
                 child: Container(
                   width: 500, height: 500,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
-                      colors: [const Color(0xFF4C1D95).withOpacity(0.6), Colors.transparent], 
+                      colors: [const Color(0xFF4C1D95).withOpacity(0.5), Colors.transparent], 
                       radius: 0.6
                     ),
                   ),
@@ -109,19 +108,19 @@ class _AnimatedBackgroundState extends State<AnimatedBackground> with SingleTick
               );
             },
           ),
-          // Esfera Roja
+          // Burbuja 2 (Rojo)
           AnimatedBuilder(
             animation: _controller,
             builder: (context, _) {
               return Positioned(
-                bottom: -100 + (_controller.value * 50),
-                right: -80 + (_controller.value * 30),
+                bottom: -100 + (_controller.value * 60),
+                right: -80 + (_controller.value * 40),
                 child: Container(
                   width: 500, height: 500,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
-                      colors: [const Color(0xFFBE123C).withOpacity(0.5), Colors.transparent], 
+                      colors: [const Color(0xFFBE123C).withOpacity(0.4), Colors.transparent], 
                       radius: 0.6
                     ),
                   ),
@@ -319,6 +318,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _requestPermissions() async {
+    // Pedir todos los permisos posibles para evitar fallos de lectura
     await [Permission.storage, Permission.audio, Permission.notification].request();
     setState(() {});
   }
@@ -380,20 +380,17 @@ class _HomeScreenState extends State<HomeScreen> {
         Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text("Especial para ti", style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold))),
         const SizedBox(height: 15),
         
-        // CARRUSEL DE TARJETAS (CORREGIDO)
+        // --- TARJETAS PREMIUM RESTAURADAS ---
         SizedBox(
           height: 180,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
             children: [
-              // 1. VERDE: MOOD MIX
               _buildCard("Music for Your Mood", "Soundtracks para cada\nuno de tus momentos.", const Color(0xFF34D399), const Color(0xFF059669), Icons.shuffle, _playRandomMix),
               const SizedBox(width: 15),
-              // 2. NARANJA: ENERGY
               _buildCard("Energy Boost", "Música para entrenar\no despertar.", const Color(0xFFF97316), const Color(0xFFC2410C), Icons.flash_on, _playRandomMix),
               const SizedBox(width: 15),
-              // 3. MORADO: CHILL
               _buildCard("Chill Mode", "Relájate y desconecta\ncon sonidos suaves.", const Color(0xFFA855F7), const Color(0xFF7E22CE), Icons.nightlight_round, _playRandomMix),
             ],
           ),
@@ -416,6 +413,8 @@ class _HomeScreenState extends State<HomeScreen> {
       future: _audioQuery.querySongs(sortType: SongSortType.DATE_ADDED, orderType: OrderType.DESC_OR_GREATER, uriType: UriType.EXTERNAL, ignoreCase: true),
       builder: (context, item) {
         if (item.data == null) return const Center(child: CircularProgressIndicator());
+        if (item.data!.isEmpty) return const Center(child: Text("No se encontraron canciones.\nPermisos necesarios.", textAlign: TextAlign.center));
+        
         var list = item.data!;
         if (limit != null) list = list.take(limit).toList();
 
@@ -472,7 +471,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- TARJETAS MEJORADAS (DISEÑO RESTAURADO) ---
   Widget _buildCard(String title, String subtitle, Color c1, Color c2, IconData icon, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -484,29 +482,13 @@ class _HomeScreenState extends State<HomeScreen> {
             Positioned(right: -20, bottom: -30, child: Icon(icon, size: 150, color: Colors.black.withOpacity(0.1))),
             Padding(
               padding: const EdgeInsets.all(25),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(title, style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const SizedBox(height: 8),
-                  Text(subtitle, style: const TextStyle(fontSize: 13, color: Colors.white70)),
-                  const SizedBox(height: 20),
-                  // Botón "Check Out" / Reproducir
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(20)),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text("Reproducir", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
-                        SizedBox(width: 5),
-                        Icon(Icons.play_arrow, size: 14, color: Colors.white)
-                      ]
-                    )
-                  )
-                ],
-              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text(title, style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                const SizedBox(height: 8),
+                Text(subtitle, style: const TextStyle(fontSize: 13, color: Colors.white70)),
+                const SizedBox(height: 20),
+                Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(20)), child: const Row(mainAxisSize: MainAxisSize.min, children: [Text("Reproducir", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)), SizedBox(width: 5), Icon(Icons.play_arrow, size: 14)]))
+              ]),
             )
           ],
         ),
@@ -613,7 +595,7 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-// --- REPRODUCTOR ---
+// --- REPRODUCTOR (AUDIO FIX) ---
 class PlayerScreen extends StatefulWidget {
   final List<SongModel> initialQueue;
   final int initialIndex;
@@ -658,20 +640,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
   }
 
+  // --- SOLUCIÓN CRÍTICA: Construir URI 'content://' ---
   Future<void> _initPlaylist() async {
     try {
       final playlist = ConcatenatingAudioSource(
         children: widget.initialQueue.map((song) {
-          Uri audioUri = Uri.parse(song.uri!);
-          if (song.uri == null || song.uri!.isEmpty) {
-             audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
-          }
+          // Android 10+ necesita content:// URIs, no paths de archivo
+          Uri audioUri = Uri.parse("content://media/external/audio/media/${song.id}");
+          
           return AudioSource.uri(
             audioUri,
             tag: MediaItem(
               id: song.id.toString(),
               title: song.title,
               artist: song.artist ?? "Desconocido",
+              // Dejar arte null para evitar crash en notificación
               artUri: null, 
             ),
           );
@@ -679,7 +662,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
       await widget.audioPlayer.setAudioSource(playlist, initialIndex: widget.initialIndex);
       widget.audioPlayer.play();
-    } catch (e) { debugPrint("Playback Error: $e"); }
+    } catch (e) { 
+      debugPrint("Playback Error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error reproduciendo archivo. Verifica permisos.")));
+    }
   }
 
   Future<void> _updatePalette() async {
@@ -716,7 +702,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       backgroundColor: Colors.transparent, 
       body: Stack(
         children: [
-          // Fondo Adaptativo
+          // Fondo Adaptativo + Blur
           AnimatedContainer(
             duration: const Duration(milliseconds: 800),
             decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_adaptiveBackground.withOpacity(0.8), Colors.black]))
@@ -727,17 +713,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
           SafeArea(
             child: Column(
               children: [
-                AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: () => Navigator.pop(context))),
+                // Header (Botones Glass)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _glassBtn(Icons.keyboard_arrow_down, () => Navigator.pop(context)),
+                      _glassBtn(Icons.ios_share, () {}),
+                    ],
+                  ),
+                ),
+                
                 const Spacer(),
+                
+                // Carrusel Carátula (Diseño Shape of You)
                 SizedBox(
-                  height: 320,
+                  height: 340,
                   child: PageView.builder(
                     controller: _pageController, itemCount: widget.initialQueue.length,
                     onPageChanged: (i) => widget.audioPlayer.seek(Duration.zero, index: i),
                     itemBuilder: (context, index) {
                       return Center(
                         child: Container(
-                          height: 300, width: 300,
+                          height: 320, width: 320,
                           decoration: BoxDecoration(borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 30)]),
                           child: ClipRRect(borderRadius: BorderRadius.circular(30), child: QueryArtworkWidget(id: widget.initialQueue[index].id, type: ArtworkType.AUDIO, size: 1000, nullArtworkWidget: Container(color: Colors.white10, child: const Icon(Icons.music_note, size: 100)))),
                         ),
@@ -745,24 +744,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     },
                   ),
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 30),
+                
+                // Info + Favorito (ALINEACIÓN "Shape of You")
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 30),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(currentSong.title, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          Text(currentSong.artist ?? "Artista", style: GoogleFonts.outfit(fontSize: 16, color: Colors.white60)),
+                          const SizedBox(height: 4),
+                          Text("Año 202X", style: GoogleFonts.outfit(fontSize: 12, color: Colors.white60)), // Simulado, on_audio_query a veces falla con el año
                         ]),
                       ),
-                      IconButton(icon: Icon(_isFav ? Icons.favorite : Icons.favorite_border, color: _isFav ? _adaptiveColor : Colors.white54, size: 30), onPressed: _toggleFav)
+                      IconButton(icon: Icon(_isFav ? Icons.favorite : Icons.favorite_border, color: _isFav ? _adaptiveColor : Colors.white54, size: 28), onPressed: _toggleFav)
                     ],
                   ),
                 ),
+                
                 const SizedBox(height: 20),
                 
-                // ESPECTRO DE AUDIO
+                // Visualizador de Onda (Waveform)
                 StreamBuilder<Duration>(
                   stream: widget.audioPlayer.positionStream,
                   builder: (context, snapshot) {
@@ -789,37 +793,41 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
 
                 const SizedBox(height: 10),
+                
+                // Controles
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    IconButton(icon: const Icon(Icons.skip_previous, size: 40), onPressed: () => widget.audioPlayer.seekToPrevious()),
+                    IconButton(icon: const Icon(Icons.shuffle, color: Colors.white54), onPressed: () {}),
+                    IconButton(icon: const Icon(Icons.skip_previous_rounded, size: 45, color: Colors.white), onPressed: () => widget.audioPlayer.seekToPrevious()),
                     Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 20),
-                      padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: _adaptiveColor, shape: BoxShape.circle),
-                      child: IconButton(icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 40), onPressed: () => _isPlaying ? widget.audioPlayer.pause() : widget.audioPlayer.play()),
+                      padding: const EdgeInsets.all(15), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                      child: IconButton(icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 35), onPressed: () => _isPlaying ? widget.audioPlayer.pause() : widget.audioPlayer.play()),
                     ),
-                    IconButton(icon: const Icon(Icons.skip_next, size: 40), onPressed: () => widget.audioPlayer.seekToNext()),
+                    IconButton(icon: const Icon(Icons.skip_next_rounded, size: 45, color: Colors.white), onPressed: () => widget.audioPlayer.seekToNext()),
+                    IconButton(icon: const Icon(Icons.repeat, color: Colors.white54), onPressed: () {}),
                   ],
                 ),
+                
                 const Spacer(),
                 
-                // LETRAS
+                // Lyrics Handle
                 DraggableScrollableSheet(
                   initialChildSize: 0.08, minChildSize: 0.08, maxChildSize: 0.6,
                   builder: (context, scrollController) {
                     return Container(
-                      decoration: const BoxDecoration(color: Color(0xFF1E1E2C), borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: const BorderRadius.vertical(top: Radius.circular(30))),
                       child: SingleChildScrollView(
                         controller: scrollController,
                         child: Column(
                           children: [
                             const SizedBox(height: 15),
                             const Icon(Icons.keyboard_arrow_up, color: Colors.white54),
-                            const Text("LETRAS", style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.bold)),
+                            const Text("Swipe for lyrics", style: TextStyle(color: Colors.white54, fontSize: 12)),
                             const SizedBox(height: 30),
                             Padding(
                               padding: const EdgeInsets.all(20),
-                              child: Text("Funcionalidad en desarrollo\n(Leer ID3 tags)", textAlign: TextAlign.center, style: GoogleFonts.outfit(fontSize: 16, color: Colors.white54)),
+                              child: Text("Letras no disponibles\n(Próximamente)", textAlign: TextAlign.center, style: GoogleFonts.outfit(fontSize: 16, color: Colors.white54)),
                             )
                           ],
                         ),
@@ -832,6 +840,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _glassBtn(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: Colors.white, size: 20)),
     );
   }
 }
@@ -870,7 +885,7 @@ class WaveformSlider extends StatelessWidget {
             return AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               width: 4, height: isActive ? waveHeight + 5 : waveHeight,
-              decoration: BoxDecoration(color: isActive ? color : Colors.white24, borderRadius: BorderRadius.circular(5), boxShadow: isActive ? [BoxShadow(color: color.withOpacity(0.5), blurRadius: 5)] : null),
+              decoration: BoxDecoration(color: isActive ? Colors.white : Colors.white24, borderRadius: BorderRadius.circular(5), boxShadow: isActive ? [BoxShadow(color: color.withOpacity(0.5), blurRadius: 5)] : null),
             );
           }),
         ),
