@@ -1,7 +1,7 @@
 name: cuicatl_mplayer
 description: Reproductor de música Cuicatl Ultimate.
 publish_to: 'none'
-version: 3.0.0+1
+version: 4.0.0+1
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -9,27 +9,17 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
-  # Iconos estilo iOS
   cupertino_icons: ^1.0.6
-  
-  # Fuentes modernas (Outfit)
   google_fonts: ^6.1.0
-  
-  # Motor de Audio Profesional
   just_audio: ^0.9.36
-  
-  # Base de datos de canciones y metadatos
+  # ESTA ES LA NUEVA PARA NOTIFICACIONES
+  just_audio_background: ^0.0.1-beta.11
   on_audio_query: ^2.9.0
-  
-  # Manejo de Permisos de Android
   permission_handler: ^11.2.0
-  
-  # Guardar Favoritos y Nombre
   shared_preferences: ^2.2.2
-  
-  # NUEVO: Extraer colores vibrantes de la imagen
   palette_generator: ^0.3.3
+  # Para abrir el Ecualizador del sistema
+  android_intent_plus: ^4.0.0
 
 dev_dependencies:
   flutter_test:
