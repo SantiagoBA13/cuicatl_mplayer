@@ -15,12 +15,10 @@ dependencies:
   # Audio
   just_audio: ^0.9.36
   on_audio_query: ^2.9.0
-  # Permisos y Sistema
+  # Permisos y almacenamiento
   permission_handler: ^11.2.0
-  shared_preferences: ^2.2.2 # Para guardar el nombre
-  # Efectos Visuales
-  ui: 
-  
+  shared_preferences: ^2.2.2 
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
