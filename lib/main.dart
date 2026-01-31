@@ -1,5 +1,5 @@
 import 'dart:ui';
-import 'dart:math'; // Para lo aleatorio
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
@@ -132,19 +132,18 @@ class MainNavigationController extends StatefulWidget {
 
 class _MainNavigationControllerState extends State<MainNavigationController> {
   int _currentIndex = 0;
-  final AudioPlayer _audioPlayer = AudioPlayer(); // Instancia única del reproductor
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
-  // Páginas disponibles
   late List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
     _pages = [
-      HomeScreen(audioPlayer: _audioPlayer), // Home
-      Container(), // Placeholder para Player (se maneja con lógica)
-      FavoritesScreen(audioPlayer: _audioPlayer), // Favoritos
-      const SettingsScreen(), // Ajustes
+      HomeScreen(audioPlayer: _audioPlayer),
+      Container(), // Placeholder Player
+      FavoritesScreen(audioPlayer: _audioPlayer),
+      const SettingsScreen(),
     ];
   }
 
@@ -152,7 +151,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _currentIndex == 1 
-          ? HomeScreen(audioPlayer: _audioPlayer) // Si tocan play, mantenemos home pero abrimos player abajo
+          ? HomeScreen(audioPlayer: _audioPlayer) 
           : _pages[_currentIndex],
       bottomNavigationBar: Container(
         margin: const EdgeInsets.fromLTRB(20, 0, 20, 30),
@@ -166,7 +165,7 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             _navBtn(Icons.home_filled, 0),
-            _navBtn(Icons.play_circle_fill, 1), // Ir al reproductor
+            _navBtn(Icons.play_circle_fill, 1),
             _navBtn(Icons.favorite, 2),
             _navBtn(Icons.settings, 3),
           ],
@@ -180,7 +179,6 @@ class _MainNavigationControllerState extends State<MainNavigationController> {
     return GestureDetector(
       onTap: () {
         if (index == 1) {
-          // Si toca Play, abrimos la pantalla del reproductor directamente
           if (_audioPlayer.audioSource != null) {
             Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(audioPlayer: _audioPlayer)));
           } else {
@@ -210,7 +208,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final OnAudioQuery _audioQuery = OnAudioQuery();
   String _userName = "Usuario";
-  int _selectedTab = 0; // 0: Música, 1: Artistas, 2: Álbumes
+  int _selectedTab = 0;
 
   @override
   void initState() {
@@ -224,18 +222,15 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _userName = prefs.getString('userName') ?? "Usuario");
   }
 
-  // Lógica para reproducir aleatorio (Tarjeta Verde)
   Future<void> _playRandomMix() async {
     List<SongModel> songs = await _audioQuery.querySongs();
     if (songs.isNotEmpty) {
-      songs.shuffle(); // Mezclar
-      // Reproducir la primera de la lista mezclada y encolar el resto
+      songs.shuffle();
       _openPlayer(songs.first, songs); 
     }
   }
 
   void _openPlayer(dynamic item, List<dynamic> queue) {
-    // Manejo inteligente de tipos
     SongModel song;
     if (item is SongModel) {
       song = item;
@@ -264,7 +259,6 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // HEADER
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
                 child: Row(
@@ -275,8 +269,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-
-              // PÍLDORAS (TABS)
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -289,8 +281,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // CONTENIDO DINÁMICO
               Expanded(
                 child: _buildBodyContent(),
               ),
@@ -321,7 +311,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBodyContent() {
-    // CASO 1: MÚSICA (Con tarjeta verde)
     if (_selectedTab == 0) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,7 +320,6 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Text("For you ($_userName)", style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(height: 15),
-          // TARJETA VERDE (MIX)
           GestureDetector(
             onTap: _playRandomMix,
             child: Container(
@@ -389,7 +377,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     
-    // CASO 2: ARTISTAS
     if (_selectedTab == 1) {
       return FutureBuilder<List<ArtistModel>>(
         future: _audioQuery.queryArtists(sortType: ArtistSortType.ARTIST, orderType: OrderType.ASC_OR_SMALLER, uriType: UriType.EXTERNAL, ignoreCase: true),
@@ -404,7 +391,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: Text(item.data![index].artist, style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text("${item.data![index].numberOfTracks} canciones"),
                 onTap: () async {
-                  // Reproducir canciones de este artista
                   List<SongModel> artistSongs = await _audioQuery.queryAudiosFrom(AudiosFromType.ARTIST_ID, item.data![index].id);
                   if(artistSongs.isNotEmpty) _openPlayer(artistSongs.first, artistSongs);
                 },
@@ -415,7 +401,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // CASO 3: ÁLBUMES
     if (_selectedTab == 2) {
       return FutureBuilder<List<AlbumModel>>(
         future: _audioQuery.queryAlbums(sortType: AlbumSortType.ALBUM, orderType: OrderType.ASC_OR_SMALLER, uriType: UriType.EXTERNAL, ignoreCase: true),
@@ -484,11 +469,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
         future: _audioQuery.querySongs(),
         builder: (context, item) {
           if (item.data == null) return const Center(child: CircularProgressIndicator());
-          // Filtrar solo los que están en la lista de favoritos
           List<SongModel> favSongs = item.data!.where((element) => _favIds.contains(element.id.toString())).toList();
-          
           if (favSongs.isEmpty) return const Center(child: Text("Aún no tienes favoritos."));
-
           return ListView.builder(
             itemCount: favSongs.length,
             itemBuilder: (context, index) {
@@ -532,7 +514,7 @@ class SettingsScreen extends StatelessWidget {
               leading: const Icon(Icons.graphic_eq, color: Color(0xFF8B5CF6), size: 30),
               title: const Text("Ecualizador"),
               subtitle: const Text("Abrir ecualizador del sistema"),
-              onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Abriendo EQ del sistema... (si está disponible)"))),
+              onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Abriendo EQ del sistema..."))),
             ),
             const Divider(color: Colors.white24),
             ListTile(
@@ -541,14 +523,13 @@ class SettingsScreen extends StatelessWidget {
               subtitle: const Text("Cambiar nombre de usuario"),
               onTap: () async {
                 final prefs = await SharedPreferences.getInstance();
-                prefs.remove('userName'); // Borrar para que pida de nuevo
-                // Reiniciar app (simulado)
+                prefs.remove('userName');
                 if(context.mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const OnboardingScreen()));
               },
             ),
              const Divider(color: Colors.white24),
              const SizedBox(height: 20),
-             const Text("Versión Cuicatl 2.1 - Build Github", style: TextStyle(color: Colors.white30)),
+             const Text("Versión Cuicatl 2.5 - Build Github", style: TextStyle(color: Colors.white30)),
           ],
         ),
       ),
@@ -556,7 +537,7 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-// --- REPRODUCTOR (PLAYER) ---
+// --- REPRODUCTOR (PLAYER) ESTILO ECHOO (ACTUALIZADO) ---
 class PlayerScreen extends StatefulWidget {
   final SongModel? song;
   final AudioPlayer audioPlayer;
@@ -565,20 +546,29 @@ class PlayerScreen extends StatefulWidget {
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _PlayerScreenState extends State<PlayerScreen> {
+class _PlayerScreenState extends State<PlayerScreen> with SingleTickerProviderStateMixin {
   bool _isPlaying = false;
   bool _isFav = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   SongModel? _currentSong;
+  
+  late AnimationController _waveController;
 
   @override
   void initState() {
     super.initState();
     _currentSong = widget.song;
+    _waveController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000))..repeat();
     if (_currentSong != null) _initPlayer();
-    else _syncPlayer(); // Si abrimos el player sin canción nueva, sincronizamos con lo que suena
+    else _syncPlayer(); 
     _checkFav();
+  }
+
+  @override
+  void dispose() {
+    _waveController.dispose();
+    super.dispose();
   }
 
   Future<void> _checkFav() async {
@@ -613,91 +603,219 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _syncPlayer() {
-    widget.audioPlayer.playerStateStream.listen((state) { if(mounted) setState(() => _isPlaying = state.playing); });
+    widget.audioPlayer.playerStateStream.listen((state) { 
+      if(mounted) {
+        setState(() => _isPlaying = state.playing);
+        if(!state.playing) _waveController.stop(); else _waveController.repeat();
+      }
+    });
     widget.audioPlayer.durationStream.listen((d) { if(mounted) setState(() => _duration = d ?? Duration.zero); });
     widget.audioPlayer.positionStream.listen((p) { if(mounted) setState(() => _position = p); });
   }
 
   @override
   Widget build(BuildContext context) {
-    // Si no hay canción sonando ni seleccionada
-    if (_currentSong == null && widget.audioPlayer.audioSource == null) {
-      return const Scaffold(body: Center(child: Text("Nada reproduciéndose")));
-    }
+    if (_currentSong == null && widget.audioPlayer.audioSource == null) return const Scaffold(body: Center(child: Text("...")));
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent, elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: () => Navigator.pop(context)),
-        title: Text(_currentSong?.artist ?? "Cuicatl Player", style: GoogleFonts.outfit(fontSize: 16, color: Colors.white70)),
-        centerTitle: true,
-      ),
       body: Stack(
         children: [
-          Container(decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF5B21B6), Color(0xFF0F0F1E)]))),
-          BackdropFilter(filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40), child: Container(color: Colors.transparent)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 30),
+          // 1. FONDO ATMOSFÉRICO
+          Positioned.fill(
+            child: QueryArtworkWidget(
+              id: _currentSong?.id ?? 0, 
+              type: ArtworkType.AUDIO,
+              artworkHeight: MediaQuery.of(context).size.height,
+              artworkWidth: MediaQuery.of(context).size.height,
+              artworkFit: BoxFit.cover,
+              nullArtworkWidget: Container(color: const Color(0xFF2E1065)),
+            ),
+          ),
+          Positioned.fill(child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60), child: Container(color: Colors.black.withOpacity(0.5)))),
+
+          // CONTENIDO
+          SafeArea(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 60),
-                // CARÁTULA
-                Container(
-                  height: 320, width: 320,
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(35), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 40, offset: const Offset(0, 20))]),
-                  child: ClipRRect(borderRadius: BorderRadius.circular(35), child: QueryArtworkWidget(
-                    id: _currentSong?.id ?? 0, type: ArtworkType.AUDIO, artworkHeight: 340, artworkWidth: 340,
-                    nullArtworkWidget: Container(color: Colors.white10, child: const Icon(Icons.music_note, size: 120, color: Colors.white24)),
-                  )),
+                // 2. HEADER GLASS
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _glassBtn(Icons.keyboard_arrow_down, () => Navigator.pop(context)),
+                      Text(_currentSong?.artist ?? "Artista", style: GoogleFonts.outfit(fontSize: 14, color: Colors.white70, fontWeight: FontWeight.w500)),
+                      _glassBtn(Icons.ios_share, () {}),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 40),
-                Align(alignment: Alignment.centerLeft, child: Text(_currentSong?.title ?? "Desconocido", style: GoogleFonts.outfit(fontSize: 26, fontWeight: FontWeight.bold))),
-                const SizedBox(height: 30),
                 
-                // BARRA
+                const Spacer(),
+
+                // 3. CARÁTULA FLOTANTE 3D
+                Container(
+                  height: 300, width: 300,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 50, offset: const Offset(0, 20))]
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(30),
+                    child: QueryArtworkWidget(
+                      id: _currentSong?.id ?? 0, type: ArtworkType.AUDIO, artworkHeight: 300, artworkWidth: 300,
+                      nullArtworkWidget: Container(color: Colors.white10, child: const Icon(Icons.music_note, size: 100, color: Colors.white24)),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 50),
+
+                // 4. INFO ALINEADA IZQUIERDA
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 30),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Año 202X", style: GoogleFonts.outfit(fontSize: 12, color: Colors.white60)),
+                            const SizedBox(height: 4),
+                            Text(
+                              _currentSong?.title ?? "Canción", 
+                              style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold),
+                              maxLines: 1, overflow: TextOverflow.ellipsis
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(_isFav ? Icons.favorite : Icons.favorite_border, color: _isFav ? const Color(0xFF8B5CF6) : Colors.white54, size: 28),
+                        onPressed: _toggleFav,
+                      )
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+
+                // 5. VISUALIZADOR ONDA
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Text(_formatDuration(_position), style: const TextStyle(fontSize: 12, color: Colors.white60)),
+                      Expanded(
+                        child: SizedBox(
+                          height: 60,
+                          child: AnimatedBuilder(
+                            animation: _waveController,
+                            builder: (context, child) {
+                              return Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: List.generate(20, (index) {
+                                  double height = 10 + Random().nextInt(40).toDouble() * (_isPlaying ? 1.0 : 0.1); 
+                                  return Container(
+                                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                                    width: 4,
+                                    height: height,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.6),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  );
+                                }),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      Text(_formatDuration(_duration), style: const TextStyle(fontSize: 12, color: Colors.white60)),
+                    ],
+                  ),
+                ),
+                // Slider invisible
                 SliderTheme(
-                  data: SliderTheme.of(context).copyWith(thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6), trackHeight: 4, activeTrackColor: Colors.white, inactiveTrackColor: Colors.white24),
+                  data: SliderTheme.of(context).copyWith(
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0),
+                    trackHeight: 0,
+                    overlayShape: SliderComponentShape.noOverlay,
+                  ),
                   child: Slider(
                     min: 0, max: _duration.inSeconds.toDouble(),
                     value: _position.inSeconds.toDouble().clamp(0, _duration.inSeconds.toDouble()),
                     onChanged: (v) => widget.audioPlayer.seek(Duration(seconds: v.toInt())),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    Text(_formatDuration(_position), style: const TextStyle(color: Colors.white54)),
-                    Text(_formatDuration(_duration), style: const TextStyle(color: Colors.white54)),
-                  ]),
-                ),
-                const SizedBox(height: 20),
-                
-                // CONTROLES
-                Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                  // BOTÓN CORAZÓN (FAVORITOS)
-                  IconButton(
-                    icon: Icon(_isFav ? Icons.favorite : Icons.favorite_border, color: _isFav ? Colors.redAccent : Colors.white54, size: 30),
-                    onPressed: _toggleFav,
-                  ),
-                  const Icon(Icons.skip_previous_rounded, size: 45, color: Colors.white),
-                  GestureDetector(
-                    onTap: () => _isPlaying ? widget.audioPlayer.pause() : widget.audioPlayer.play(),
-                    child: Container(
-                      padding: const EdgeInsets.all(22), 
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
-                      child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 35),
+
+                const SizedBox(height: 10),
+
+                // 6. CONTROLES GLASS
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    IconButton(icon: const Icon(Icons.shuffle, color: Colors.white54), onPressed: () {}),
+                    IconButton(icon: const Icon(Icons.skip_previous_rounded, size: 40, color: Colors.white), onPressed: () {}),
+                    
+                    GestureDetector(
+                      onTap: () => _isPlaying ? widget.audioPlayer.pause() : widget.audioPlayer.play(),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(50),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            width: 70, height: 70,
+                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                            child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 35, color: Colors.white),
+                          ),
+                        ),
+                      ),
                     ),
+                    
+                    IconButton(icon: const Icon(Icons.skip_next_rounded, size: 40, color: Colors.white), onPressed: () {}),
+                    IconButton(icon: const Icon(Icons.repeat, color: Colors.white54), onPressed: () {}),
+                  ],
+                ),
+                
+                const Spacer(),
+                
+                // 7. SWIPE HANDLE
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
                   ),
-                  const Icon(Icons.skip_next_rounded, size: 45, color: Colors.white),
-                  const Icon(Icons.repeat, color: Colors.white54),
-                ]),
-                const SizedBox(height: 40),
+                  child: const Column(
+                    children: [
+                      Icon(Icons.keyboard_arrow_up, color: Colors.white54, size: 20),
+                      Text("Swipe for lyrics", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                    ],
+                  ),
+                )
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _glassBtn(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            color: Colors.white.withOpacity(0.1),
+            child: Icon(icon, color: Colors.white, size: 20),
+          ),
+        ),
       ),
     );
   }
