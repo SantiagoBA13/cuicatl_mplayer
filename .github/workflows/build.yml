@@ -23,13 +23,13 @@ jobs:
       # --- INYECCIÓN DE PERMISOS ANDROID 14 ---
       - name: Inyectar Manifiesto Android
         run: |
-          # 1. Permisos: Agregamos READ_MEDIA_AUDIO (Vital para Android 13+) y el tipo de servicio
-          sed -i 's/<application/<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"\/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"\/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"\/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"\/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"\/>\n    <application/g' android/app/src/main/AndroidManifest.xml
+          # 1. Inyectar permisos y atributo requestLegacyExternalStorage para máxima compatibilidad
+          sed -i 's/<application/<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"\/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"\/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"\/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"\/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"\/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"\/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"\/>\n    <application android:requestLegacyExternalStorage="true"/g' android/app/src/main/AndroidManifest.xml
           
-          # 2. Nombre de la actividad
+          # 2. Corregir nombre de actividad
           sed -i 's/android:name="io.flutter.app.FlutterApplication"/android:name="\$\{applicationName\}"/g' android/app/src/main/AndroidManifest.xml
           
-          # 3. Servicio: ESTO ES LO QUE ARREGLA ANDROID 14. Definimos mediaPlayback explícitamente.
+          # 3. Servicio de Audio Background
           sed -i 's/<\/application>/<service android:name="com.ryanheise.just_audio_background.AudioService" android:foregroundServiceType="mediaPlayback" android:exported="true" android:permission="android.permission.BIND_FOREGROUND_SERVICE_MEDIA_PLAYBACK"><intent-filter><action android:name="android.media.browse.MediaBrowserService" \/><\/intent-filter><\/service><\/application>/g' android/app/src/main/AndroidManifest.xml
 
       - name: Instalar dependencias
@@ -39,5 +39,5 @@ jobs:
       - name: Subir APK
         uses: actions/upload-artifact@v4
         with:
-          name: cuicatl-app-android14-fix
+          name: cuicatl-app-v9-fix
           path: build/app/outputs/flutter-apk/app-release.apk
