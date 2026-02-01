@@ -20,51 +20,42 @@ jobs:
           flutter-version: '3.19.0'
           channel: 'stable'
 
-      - name: Flutter pub get
-        run: flutter pub get
-
-      - name: Crear Android (si falta)
+      - name: Configurar Entorno
         run: |
+          flutter pub get
           if [ ! -d "android" ]; then
             flutter create --platforms=android .
           fi
 
       - name: Forzar SDK 34 (Android 14)
         run: |
-          # Groovy
+          # Modifica build.gradle (Groovy)
           if [ -f "android/app/build.gradle" ]; then
             sed -i 's/compileSdkVersion [0-9]\+/compileSdkVersion 34/g' android/app/build.gradle || true
             sed -i 's/targetSdkVersion [0-9]\+/targetSdkVersion 34/g' android/app/build.gradle || true
             sed -i 's/minSdkVersion [0-9]\+/minSdkVersion 23/g' android/app/build.gradle || true
           fi
-          # Kotlin DSL
+          # Modifica build.gradle.kts (Kotlin)
           if [ -f "android/app/build.gradle.kts" ]; then
             sed -i 's/compileSdk = [0-9]\+/compileSdk = 34/g' android/app/build.gradle.kts || true
             sed -i 's/targetSdk = [0-9]\+/targetSdk = 34/g' android/app/build.gradle.kts || true
             sed -i 's/minSdk = [0-9]\+/minSdk = 23/g' android/app/build.gradle.kts || true
           fi
 
-      # --- AQUÍ ESTÁ LA SOLUCIÓN DEL ERROR ROJO ---
       - name: Inyectar Permisos y Servicio (Python Script)
         run: |
           python3 - << 'PY'
+          import os
           from pathlib import Path
-          import sys
 
           manifest_path = Path("android/app/src/main/AndroidManifest.xml")
           if not manifest_path.exists():
-              print("ERROR: No se encontró AndroidManifest.xml")
-              sys.exit(1)
+              print("Error: No se encontró el Manifiesto")
+              exit(1)
 
           text = manifest_path.read_text(encoding="utf-8")
 
-          # Función para insertar antes de <application>
-          def insert_before_app(content, current_text):
-              if content in current_text: return current_text
-              if "<application" not in current_text: return current_text
-              return current_text.replace("<application", f"{content}\n    <application", 1)
-
-          # 1. PERMISOS (Android 14 + Legacy)
+          # 1. PERMISOS NECESARIOS (Android 14)
           perms = [
               'android.permission.READ_MEDIA_AUDIO',
               'android.permission.POST_NOTIFICATIONS',
@@ -73,10 +64,16 @@ jobs:
               'android.permission.WAKE_LOCK',
               'android.permission.READ_EXTERNAL_STORAGE'
           ]
-          for p in perms:
-              text = insert_before_app(f'<uses-permission android:name="{p}" />', text)
 
-          # 2. SERVICIO (ESTO FALTABA Y CAUSABA EL ERROR ROJO)
+          def add_perm(t, p):
+              tag = f'<uses-permission android:name="{p}" />'
+              if tag in t: return t
+              return t.replace("<application", f"{tag}\n    <application", 1)
+
+          for p in perms:
+              text = add_perm(text, p)
+
+          # 2. INYECCIÓN DEL SERVICIO (CRÍTICO: Evita el error rojo de inicialización)
           service_xml = """
           <service android:name="com.ryanheise.just_audio_background.AudioService"
               android:foregroundServiceType="mediaPlayback"
@@ -88,18 +85,18 @@ jobs:
           </service>
           """
           
-          # Insertamos el servicio antes de cerrar </application>
           if "com.ryanheise.just_audio_background.AudioService" not in text:
+              # Insertar antes del cierre de application
               if "</application>" in text:
                   text = text.replace("</application>", f"{service_xml}\n    </application>")
               else:
                   print("Advertencia: No se encontró etiqueta de cierre application")
 
-          # 3. CORREGIR NOMBRE ACTIVIDAD
+          # 3. Ajuste de nombre de actividad
           text = text.replace('android:name="io.flutter.app.FlutterApplication"', 'android:name="${applicationName}"')
 
           manifest_path.write_text(text, encoding="utf-8")
-          print("Manifiesto parcheado exitosamente (Servicio + Permisos).")
+          print("Manifiesto parcheado correctamente.")
           PY
 
       - name: Construir APK
@@ -108,5 +105,5 @@ jobs:
       - name: Subir APK
         uses: actions/upload-artifact@v4
         with:
-          name: cuicatl-app-v15-fixed
+          name: cuicatl-app-v16-final-fix
           path: build/app/outputs/flutter-apk/app-release.apk
